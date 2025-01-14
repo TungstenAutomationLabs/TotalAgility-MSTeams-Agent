@@ -1,0 +1,5 @@
+# A gitignored place holder file for local runtime configurations
+BOT_ID=
+BOT_PASSWORD=
+TOTALAGILITY_ENDPOINT=
+TOTALAGILITY_API_KEY=

@@ -1,0 +1,27 @@
+# TeamsFx files
+env/.env.*.user
+env/.env.local
+.localConfigs.testTool
+#.localConfigs
+.notification.localstore.json
+.notification.testtoolstore.json
+appPackage/build
+
+# dependencies
+node_modules/
+
+# misc
+.env
+.deployment
+.DS_Store
+
+# Dev tool directories
+/devTools/
+
+# Exclude other env files:
+env/.env.dev
+env/.env.testtool
+
+# Ignore copies of files:
+*.orig
+NOTES.MD

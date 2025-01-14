@@ -1,0 +1,86 @@
+{
+    "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.19/MicrosoftTeams.schema.json",
+    "manifestVersion": "1.19",
+    "version": "1.0.0",
+    "id": "${{TEAMS_APP_ID}}",
+    "developer": {
+        "name": "Tungsten Automation Labs",
+        "websiteUrl": "https://www.tungstenautomation.com/",
+        "privacyUrl": "https://www.tungstenautomation.com/legal/privacy",
+        "termsOfUseUrl": "https://www.tungstenautomation.com/legal/terms-of-use"
+    },
+    "icons": {
+        "color": "TA-Teams_Logo-colour-192x192.png",
+        "outline": "outline.png"
+    },
+    "name": {
+        "short": "TotalAgility Agent",
+        "full": "full name for TotalAgility Agent"
+    },
+    "description": {
+        "short": "TotalAgility Agent - an Intelligent Automation Agent running on TotalAgility.",
+        "full": "TotalAgility Agent provides a Teams interface to engage an Intelligent Automation Agent running on TotalAgility."
+    },
+    "accentColor": "#FFFFFF",
+    "bots": [
+        {
+            "botId": "${{BOT_ID}}",
+            "scopes": [
+                "personal",
+                "team",
+                "groupChat"
+            ],
+            "supportsFiles": false,
+            "isNotificationOnly": false,
+            "commandLists": [
+                {
+                    "scopes": [
+                        "personal"
+                    ],
+                    "commands": [
+                        {
+                            "title": "Help & Guidance",
+                            "description": "What tasks are you able to do for me?"
+                        },
+                        {
+                            "title": "What is in my workqueue today?",
+                            "description": "Searches the TotalAgility work queue & active jobs using the provided prompt."
+                        },
+                        {
+                            "title": "Work Item Details",
+                            "description": "Give me the details of job: 58710728C9EF11EFA8502818785AA6F9"
+                        },
+                        {
+                            "title": "Shipments clearing customs today",
+                            "description": "What shipments do we have clearing customs today?"
+                        },
+                        {
+                            "title": "Shipments details",
+                            "description": "Can you get me all the details of that shipment?"
+                        },
+                        {
+                            "title": "Hazardous material handling",
+                            "description": "What are the operating procedures for handling that kind of material?"
+                        },
+                        {
+                            "title": "Shipment Cross-Checking",
+                            "description": "Are all the documents in order for this shipment?"
+                        },
+                        {
+                            "title": "Goods Acceptance",
+                            "description": "Initiate the eSigning process to complete acceptance and release of the goods."
+                        }  
+                    ]
+                }
+            ]
+        }
+    ],
+    "composeExtensions": [],
+    "configurableTabs": [],
+    "staticTabs": [],
+    "permissions": [
+        "identity",
+        "messageTeamMembers"
+    ],
+    "validDomains": []
+}
