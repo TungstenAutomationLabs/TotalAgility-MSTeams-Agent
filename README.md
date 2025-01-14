@@ -43,11 +43,11 @@ The base package is based from the VS Code template:
 Teams > Development > Create New App > Bot
 
 Note that the files in the env folder need to be updated to match your environment. Specifically note the addition of 2 new fields:
-TOTALAGILITY_ENDPOINT=
-TOTALAGILITY_API_KEY=
+```TOTALAGILITY_ENDPOINT=```
+```TOTALAGILITY_API_KEY=```
 
 The TotalAgility endpoint is the TA Rest / OpenAPI create jobs sync endpoint. For more details see the TotalAgility documentation. 
-https://{{your_tenant}}.dev.kofaxcloud.com/services/sdk/v1/jobs/sync
+```https://{{your_tenant}}.dev.kofaxcloud.com/services/sdk/v1/jobs/sync```
 
 The main API call is managed in the ```src/taAgent.js``` file. Update this file with the corresponding details for the TA Agent you want to call. Note that this API call uses a hard coded "seed" for consistent responses, but this can be changed or omitted as desired. 
 
