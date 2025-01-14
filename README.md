@@ -46,7 +46,10 @@ Note that the files in the env folder need to be updated to match your environme
 TOTALAGILITY_ENDPOINT=
 TOTALAGILITY_API_KEY=
 
-The main API call is managed in the src/taAgent.js file. 
+The TotalAgility endpoint is the TA Rest / OpenAPI create jobs sync endpoint. For more details see the TotalAgility documentation. 
+https://{{your_tenant}}.dev.kofaxcloud.com/services/sdk/v1/jobs/sync
+
+The main API call is managed in the ```src/taAgent.js``` file. Update this file with the corresponding details for the TA Agent you want to call. Note that this API call uses a hard coded "seed" for consistent responses, but this can be changed or omitted as desired. 
 
 The pattern I've used is to have a single controlling Agent process, in my environment call the "Intent Router Agent".
 This process, implemented as a "Custom LLM" or "Agent Process" in TotalAgility (the name used will depend on the version of TotalAgility you are using), in turn calls other agent processes depending on the prompt sent. 
