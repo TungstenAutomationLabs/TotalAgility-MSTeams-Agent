@@ -12,7 +12,7 @@ class TeamsBot extends TeamsActivityHandler {
     super();
 
     this.onMessage(async (context, next) => {
-      context.sendActivity(Utils.getRandomLoadingMessage()); // Should be displayed without waiting for the callbackRestService to finish first
+      context.sendActivity(Utils.getRandomLoadingMessage()); // Should be displayed without waiting for the handleMessageWithLoadingIndicator to finish first
       await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed
       await this.handleMessageWithLoadingIndicator(context); // Call the TA Agent / API
       await next();

@@ -16,6 +16,8 @@ async function callRestService(prompt_text) {
     let return_response = "xxxx";
     console.log("Calling TotalAgility on " + config.totalAgilityEndpoint);
     const url = config.totalAgilityEndpoint;
+
+    // Note some hard coded values for the process ID, seed etc.
     let payload = {
         "ProcessId": "04B1CCBD831589A837633D4DBB013EC3",
         "ProcessName": "Intent Router Agent",
