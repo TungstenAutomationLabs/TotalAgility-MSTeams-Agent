@@ -11,7 +11,7 @@
     },
     "icons": {
         "color": "TA-Teams_Logo-colour-192x192.png",
-        "outline": "outline.png"
+        "outline": "TA-outline-32x32.png"
     },
     "name": {
         "short": "TotalAgility Agent",
