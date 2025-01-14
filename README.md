@@ -61,5 +61,5 @@ As all agents have the same interface, the registry of available actions can be 
 
 The final step is an evaluation step, which determines if the agent is ready to respond, of if the agent should repeat the process to find additonal information, data or take another action (this allows the agent to undertake multiple steps to complete a task or goal, for example searcing both the internet and a knowledge base for content to use in a RAG pattern). 
 
-![Example intent router process](intent-router-agent-process.png)
+![Example intent router process](img/intent-router-agent-process.png)
 
