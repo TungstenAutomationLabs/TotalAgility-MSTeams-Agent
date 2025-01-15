@@ -3,7 +3,9 @@ This sample application illustrates connecting to TotalAgility Agents or Custom 
 
 Provides a lightweight MS Teams / Bot Framework UI to front a TotalAgility Automation Agent, proxying user interactions via Teams to the Agent running in TotalAgility, then displaying the Agent's responses.
 
-Agents or Custom LLM processes in TotalAgility are synchronous process built with the TotalAgility low code designer.
+![Example screenshot of an interaction with a TotalAgility AI Agent](img/TotalAgility-Teams-App-Screenshot.png)
+
+Agents or Custom LLM processes in TotalAgility are synchronous AI powered automation process built with the TotalAgility low code designer.
 
 They provide a standard interface for both chat, document and API interactions. 
 
