@@ -9,6 +9,12 @@ param totalAgilityEndpoint string
 @secure()
 param totalAgilityApiKey string
 
+@secure()
+param totalAgilityAgentName string
+
+@secure()
+param totalAgilityAgentId string
+
 param webAppSKU string
 
 @maxLength(42)
@@ -76,6 +82,14 @@ resource webApp 'Microsoft.Web/sites@2021-02-01' = {
         {
           name: 'TOTALAGILITY_API_KEY'
           value: totalAgilityApiKey
+        }
+        {
+          name: 'TOTALAGILITY_AGENT_NAME'
+          value: totalAgilityAgentName
+        }
+        {
+          name: 'TOTALAGILITY_AGENT_ID'
+          value: totalAgilityAgentId
         }
       ]
       ftpsState: 'FtpsOnly'

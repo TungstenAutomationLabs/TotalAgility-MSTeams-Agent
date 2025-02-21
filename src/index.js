@@ -51,6 +51,8 @@ const server = expressApp.listen(process.env.port || process.env.PORT || 3978, (
   console.log(`\nBot Started, ${expressApp.name} listening to`, server.address());
   //console.log("TotalAgility Endpoint: " + config.totalAgilityEndpoint);
   //console.log("TotalAgility API Key: " + config.totalAgilityApiKey);
+  //console.log("TotalAgility Agent Name: " + config.totalAgilityAgentName);
+  //console.log("TotalAgility Agent ID: " + config.totalAgilityAgentId);
 });
 
 // Listen for incoming requests.

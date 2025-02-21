@@ -16,6 +16,12 @@
     },
     "totalAgilityApiKey": {
       "value": "${{TOTALAGILITY_API_KEY}}"
+    },
+    "totalAgilityAgentName": {
+      "value": "${{TOTALAGILITY_AGENT_NAME}}"
+    },
+    "totalAgilityAgentId": {
+      "value": "${{TOTALAGILITY_AGENT_ID}}"
     }
   }
 }

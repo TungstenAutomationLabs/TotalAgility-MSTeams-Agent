@@ -44,17 +44,29 @@ The code is implemented in node.js and can be run locally or deployed to a Mirco
 The base package is based from the VS Code template:
 Teams > Development > Create New App > Bot
 
-Note that the files in the env folder need to be updated to match your environment. Specifically note the addition of 2 new fields:
+Note that the files in the env folder need to be updated to match your environment. Specifically note the addition of 4 new fields:
 ```TOTALAGILITY_ENDPOINT=```
 ```TOTALAGILITY_API_KEY=```
+```TOTALAGILITY_AGENT_NAME=```
+```TOTALAGILITY_AGENT_ID=```
 
 The TotalAgility endpoint is the TA Rest / OpenAPI create jobs sync endpoint. For more details see the TotalAgility documentation. 
 ```https://{{your_tenant}}.dev.kofaxcloud.com/services/sdk/v1/jobs/sync```
 
-The main API call is managed in the ```src/taAgent.js``` file. Update this file with the corresponding details for the TA Agent you want to call. Note that this API call uses a hard coded "seed" for consistent responses, but this can be changed or omitted as desired. 
+The Agent Name is the Process Name of the Agent process in TotalAgility.
 
-The pattern I've used is to have a single controlling Agent process, in my environment call the "Intent Router Agent".
+The Agent ID is the Process ID in TotalAgility (this is the string of digits and numbers on the end of the URL when editing the Agent process in TotalAgility Designer).
+
+The main API call is managed in the ```src/taAgent.js``` file. Update the .env files with the corresponding details for the TA Agent you want to call. Note that this API call uses a hard coded "seed" for consistent responses, but this can be changed or omitted as desired. 
+
+Loading messages can be configured in the ```src/utils.js``` file. 
+
+Exampe prompts can be set in the ```appPackage/manifest.json``` file. 
+
+The pattern I've used is to have a single controlling Agent process, in my environment called the "Intent Router Agent".
 This process, implemented as a "Custom LLM" or "Agent Process" in TotalAgility (the name used will depend on the version of TotalAgility you are using), in turn calls other agent processes depending on the prompt sent. 
+
+For a basic tutorial on creating AI Agents in TotalAgility, see the following video: [Creating a Basic AI Agent in TotalAgility](https://www.tungstendemocenter.com/items/creating-a-basic-ai-agent-in-totalagility) 
 
 The "Intent Router Agent" makes use of an LLM step to evalute the incoming prompt, and map this to one of the available actions or sub-agents. 
 The incoming prompt is combined with a prompt guiding the LLM on how to chose the intent or next action. This system prompt include a registry or list of available next actions / agents, including their ProcessIDs in the data structure. The intent evaluator step returns json data mapped to a TotalAgility Data Model embedding the details of the sub process / agent to call, and the prompt to pass in. 
@@ -64,4 +76,5 @@ As all agents have the same interface, the registry of available actions can be 
 The final step is an evaluation step, which determines if the agent is ready to respond, of if the agent should repeat the process to find additonal information, data or take another action (this allows the agent to undertake multiple steps to complete a task or goal, for example searcing both the internet and a knowledge base for content to use in a RAG pattern). 
 
 ![Example intent router process](img/intent-router-agent-process.png)
+
 

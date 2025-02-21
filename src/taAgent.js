@@ -19,8 +19,8 @@ async function callRestService(prompt_text) {
 
     // Note some hard coded values for the process ID, seed etc.
     let payload = {
-        "ProcessId": "04B1CCBD831589A837633D4DBB013EC3",
-        "ProcessName": "Intent Router Agent",
+        "ProcessId": "" + config.totalAgilityAgentId + "",
+        "ProcessName": "" + config.totalAgilityAgentName + "",
         "JobInitialization": {
             "InputVariables": [
                 {
@@ -90,7 +90,8 @@ async function callRestService(prompt_text) {
 
     } catch (error) {
         console.error('Error: ', error);
-        return_response = 'Error: ' + error;
+        return_response = 'Error: ' + error + "\nPayload: " + JSON.stringify(payload);
+        // return_response = 'Error: ' + error + ' using url: ' + url + ' and key ' + config.totalAgilityApiKey + "\nPayload: " + JSON.stringify(payload);
     }
     return return_response;
 }
