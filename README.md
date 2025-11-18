@@ -77,4 +77,7 @@ The final step is an evaluation step, which determines if the agent is ready to 
 
 ![Example intent router process](img/intent-router-agent-process.png)
 
+### Version 1.1 updates
+Added the ability to upload files and send these to the TotalAgility Agent for processing. 
 
+Note that this sample uses TotalAgility 25.2, where the Agent interface accepts TotalAgility Documents (sent as a base64 string) to Jobs sync API.

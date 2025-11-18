@@ -2,6 +2,7 @@
 env/.env.*.user
 env/.env.local
 .localConfigs.testTool
+
 #.localConfigs
 .notification.localstore.json
 .notification.testtoolstore.json
@@ -19,9 +20,15 @@ node_modules/
 /devTools/
 
 # Exclude other env files:
-env/.env.dev
 env/.env.testtool
+env/.env.dev
 
 # Ignore copies of files:
 *.orig
 NOTES.MD
+
+#  Work in progress:
+wip/
+
+# App deployments
+appPackage/build/

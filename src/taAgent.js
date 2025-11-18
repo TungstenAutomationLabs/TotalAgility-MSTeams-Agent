@@ -10,8 +10,20 @@ function tester(text) {
     return "Hello " + text;
 }
 
-async function callRestService(prompt_text) {
+async function callRestService(prompt_text, base64String, mimeType) {
     console.log("callRestService() called with: " + prompt_text);
+
+    if (base64String) {
+        console.log("File attached with size: " + base64String.length);
+    } else {
+        base64String = "";
+    }
+
+    if (mimeType) {
+        console.log("File MIME type: " + mimeType);
+    } else {
+        mimeType = "";
+    }
     
     let return_response = "xxxx";
     console.log("Calling TotalAgility on " + config.totalAgilityEndpoint);
@@ -41,6 +53,19 @@ async function callRestService(prompt_text) {
                 }
             ]
         },
+        ...(mimeType ? { "Documents": [
+            {
+                "MimeType": "" + mimeType + "",
+                "RuntimeFields": [],
+                "FolderId": "",
+                "DocumentTypeId": "",
+                "FolderTypeId": "",
+                "Base64Data": "" + base64String + "",
+                "DocumentTypeName": "",
+                "DocumentGroupId": "",
+                "DocumentGroupName": ""
+            }
+        ] } : {}),
         "VariablesToReturn": [
             {
                 "VarId": "OUTPUT"
