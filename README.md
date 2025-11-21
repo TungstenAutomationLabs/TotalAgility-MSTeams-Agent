@@ -44,14 +44,17 @@ The code is implemented in node.js and can be run locally or deployed to a Mirco
 The base package is based from the VS Code template:
 Teams > Development > Create New App > Bot
 
-Note that the files in the env folder need to be updated to match your environment. Specifically note the addition of 4 new fields:
+Note that the files in the env folder need to be updated to match your environment. Specifically note the addition of 6 new fields:
 ```TOTALAGILITY_ENDPOINT=```
 ```TOTALAGILITY_API_KEY=```
 ```TOTALAGILITY_AGENT_NAME=```
 ```TOTALAGILITY_AGENT_ID=```
+```TOTALAGILITY_TEST_USERNAME=```
+```TOTALAGILITY_USE_TEST_USER=```
 
-The TotalAgility endpoint is the TA Rest / OpenAPI create jobs sync endpoint. For more details see the TotalAgility documentation. 
-```https://{{your_tenant}}.dev.kofaxcloud.com/services/sdk/v1/jobs/sync```
+
+The TotalAgility endpoint is the base TA Rest / OpenAPI endpoint. For more details see the TotalAgility documentation. 
+```https://{{your_tenant}}.dev.kofaxcloud.com/services/sdk/v1```
 
 The Agent Name is the Process Name of the Agent process in TotalAgility.
 
@@ -77,7 +80,20 @@ The final step is an evaluation step, which determines if the agent is ready to 
 
 ![Example intent router process](img/intent-router-agent-process.png)
 
-### Version 1.1 updates
+### Version 1.1 updates:
 Added the ability to upload files and send these to the TotalAgility Agent for processing. 
 
 Note that this sample uses TotalAgility 25.2, where the Agent interface accepts TotalAgility Documents (sent as a base64 string) to Jobs sync API.
+
+### Version 1.2 updates:
+Added settings to SSO a user into TotalAgility based on their email address from their Teams login. 
+
+*NOTE:* The code assumes that the user's email address (from their MS teams login) is their user ID in TotalAgility. 
+
+To override this behaviour, you can specify a test user name in the .env files, along in a var to direct the Teams app to use this user ID instead of the logged in users account.
+
+Added 2 new environment variables to control this behaviour:
+
+```TOTALAGILITY_TEST_USERNAME=my_ta_test_account@test.com```
+```TOTALAGILITY_USE_TEST_USER=true```
+

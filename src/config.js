@@ -7,6 +7,8 @@ const config = {
   totalAgilityApiKey: process.env.TOTALAGILITY_API_KEY,
   totalAgilityAgentName: process.env.TOTALAGILITY_AGENT_NAME,
   totalAgilityAgentId: process.env.TOTALAGILITY_AGENT_ID,
+  totalAgilityTestUserName: process.env.TOTALAGILITY_TEST_USERNAME,
+  totalAgilityUseTestUser: process.env.TOTALAGILITY_USE_TEST_USER,
 };
 
 module.exports = config;

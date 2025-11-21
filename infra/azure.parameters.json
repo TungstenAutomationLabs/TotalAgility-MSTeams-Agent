@@ -23,5 +23,12 @@
     "totalAgilityAgentId": {
       "value": "${{TOTALAGILITY_AGENT_ID}}"
     }
+    ,
+    "totalAgilityTestUserName": {
+      "value": "${{TOTALAGILITY_TEST_USERNAME}}"
+    },
+    "totalAgilityUseTestUser": {
+      "value": "${{TOTALAGILITY_USE_TEST_USER}}"
+    }
   }
 }

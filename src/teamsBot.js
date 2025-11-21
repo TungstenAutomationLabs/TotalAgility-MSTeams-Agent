@@ -11,15 +11,38 @@ const path = require('path');
 
 let messageArray = []; // An array to hold the current chat history. 
 const messageArrayMaxSize = 10; // Max number of messages to retain in the chat history.
+let ssoKey = ""; // Variable to hold the SSO key
 
 class TeamsBot extends TeamsActivityHandler {
-  constructor() {
+  constructor(userState, ssoKeyAccessor) {
+  // constructor() {
     super();
+    this.userState = userState;
+    this.ssoKeyAccessor = ssoKeyAccessor;
 
     this.onMessage(async (context, next) => {
-      context.sendActivity(Utils.getRandomLoadingMessage()); // Should be displayed without waiting for the handleMessageWithLoadingIndicator to finish first
+
+      await context.sendActivity(Utils.getRandomLoadingMessage()); // Should be displayed without waiting for the handleMessageWithLoadingIndicator to finish first
+      //await context.sendActivities([{ type: 'typing' }]);
+
+      // Try to get the SSO key from state
+      ssoKey = await this.ssoKeyAccessor.get(context);
+
+      if (!ssoKey) {
+        await context.sendActivity(`Signing into TotalAgility...`);
+        await context.sendActivities([{ type: 'typing' }]);
+        // If not present, call your async function to get it
+        ssoKey = await TotalAgilityAgent.taSSOLogin(context); // Get the SSO Key from TotalAgility
+    
+        // Store the SSO key in state for future use
+        await this.ssoKeyAccessor.set(context, ssoKey);
+        await context.sendActivity(`TotalAgility sign-in complete.`);
+        // Debug:
+        //await context.sendActivity(`TotalAgility sign-in complete... SSO Key: ${ssoKey}`);
+      }
+
       await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed
-      await this.handleMessageWithLoadingIndicator(context); // Call the TA Agent / API
+      await this.handleMessageWithLoadingIndicator(context,ssoKey); // Call the TA Agent / API
       await next();
     });
 
@@ -41,7 +64,7 @@ class TeamsBot extends TeamsActivityHandler {
     });
   }
 
-  async handleMessageWithLoadingIndicator(context) {
+  async handleMessageWithLoadingIndicator(context,ssoKey) {
     await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed
     console.log("Running with Message Activity.");
 
@@ -111,7 +134,7 @@ class TeamsBot extends TeamsActivityHandler {
       // let agentResponse = await TotalAgilityAgent.callRestService(userRequest);
 
       // Send the whole conversation history to  the TA Agent / API.
-      let agentResponse = await TotalAgilityAgent.callRestService(Utils.renderConversationHistoryMarkdown(messageArray), base64String, mimeType); // Pass the base64 string if a file was attached
+      let agentResponse = await TotalAgilityAgent.callRestService(Utils.renderConversationHistoryMarkdown(messageArray), base64String, mimeType, ssoKey); // Pass the base64 string if a file was attached
       await context.sendActivity(agentResponse); // Send the response to the user
       saveMsg("TotalAgility Bot", agentResponse); // Save a copy of the reply message
       

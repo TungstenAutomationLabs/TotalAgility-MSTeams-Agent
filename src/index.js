@@ -9,9 +9,16 @@ const {
   CloudAdapter,
   ConfigurationServiceClientCredentialFactory,
   ConfigurationBotFrameworkAuthentication,
+  UserState, 
+  MemoryStorage
 } = require("botbuilder");
+
 const { TeamsBot } = require("./teamsBot");
+
 const config = require("./config");
+
+// How state across messages, so only one SSO key is needed for TA.
+// const { UserState, MemoryStorage } = require("botbuilder");
 
 // Create adapter.
 // See https://aka.ms/about-bot-adapter to learn more about adapters.
@@ -24,6 +31,11 @@ const botFrameworkAuthentication = new ConfigurationBotFrameworkAuthentication(
 
 
 const adapter = new CloudAdapter(botFrameworkAuthentication);
+
+// Set up state management for SSO key storage:
+const memoryStorage = new MemoryStorage();
+const userState = new UserState(memoryStorage);
+const ssoKeyAccessor = userState.createProperty('ssoKey');
 
 adapter.onTurnError = async (context, error) => {
   // This check writes out errors to console log .vs. app insights.
@@ -41,7 +53,9 @@ adapter.onTurnError = async (context, error) => {
 };
 
 // Create the bot that will handle incoming messages.
-const bot = new TeamsBot();
+//const bot = new TeamsBot();
+// Create the bot that will handle incoming messages & maintain user state for SSO key: 
+const bot = new TeamsBot(userState, ssoKeyAccessor);
 
 // Create express application.
 const expressApp = express();
@@ -59,6 +73,7 @@ const server = expressApp.listen(process.env.port || process.env.PORT || 3978, (
 expressApp.post("/api/messages", async (req, res) => {
   await adapter.process(req, res, async (context) => {
     await bot.run(context);
+    await userState.saveChanges(context); // Save any state changes.
   });
 });
 

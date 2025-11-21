@@ -3,6 +3,7 @@
 /*************************************************************************/
 
 const config = require("./config");
+const { TeamsInfo } = require('botbuilder');
 
 function tester(text) {
     console.log("Calling TotalAgility on " + config.totalAgilityEndpoint);
@@ -10,7 +11,7 @@ function tester(text) {
     return "Hello " + text;
 }
 
-async function callRestService(prompt_text, base64String, mimeType) {
+async function callRestService(prompt_text, base64String, mimeType, sessionKey) {
     console.log("callRestService() called with: " + prompt_text);
 
     if (base64String) {
@@ -24,10 +25,10 @@ async function callRestService(prompt_text, base64String, mimeType) {
     } else {
         mimeType = "";
     }
-    
+
     let return_response = "xxxx";
-    console.log("Calling TotalAgility on " + config.totalAgilityEndpoint);
-    const url = config.totalAgilityEndpoint;
+    console.log("Calling TotalAgility on " + config.totalAgilityEndpoint + "/jobs/sync");
+    const url = config.totalAgilityEndpoint + "/jobs/sync";
 
     // Note some hard coded values for the process ID, seed etc.
     let payload = {
@@ -53,19 +54,21 @@ async function callRestService(prompt_text, base64String, mimeType) {
                 }
             ]
         },
-        ...(mimeType ? { "Documents": [
-            {
-                "MimeType": "" + mimeType + "",
-                "RuntimeFields": [],
-                "FolderId": "",
-                "DocumentTypeId": "",
-                "FolderTypeId": "",
-                "Base64Data": "" + base64String + "",
-                "DocumentTypeName": "",
-                "DocumentGroupId": "",
-                "DocumentGroupName": ""
-            }
-        ] } : {}),
+        ...(mimeType ? {
+            "Documents": [
+                {
+                    "MimeType": "" + mimeType + "",
+                    "RuntimeFields": [],
+                    "FolderId": "",
+                    "DocumentTypeId": "",
+                    "FolderTypeId": "",
+                    "Base64Data": "" + base64String + "",
+                    "DocumentTypeName": "",
+                    "DocumentGroupId": "",
+                    "DocumentGroupName": ""
+                }
+            ]
+        } : {}),
         "VariablesToReturn": [
             {
                 "VarId": "OUTPUT"
@@ -79,12 +82,17 @@ async function callRestService(prompt_text, base64String, mimeType) {
       'Authorization': 'Bearer YOUR_ACCESS_TOKEN' // Replace with your token
     };
     */
+    /* Without SSO:
+     const headers = {
+         'Content-Type': 'application/json',
+         'Authorization': '' + config.totalAgilityApiKey + '' // Replace with your token
+     };
+     */
     const headers = {
         'Content-Type': 'application/json',
-        'Authorization': '' + config.totalAgilityApiKey + '' // Replace with your token
+        'Authorization': '' + sessionKey + ''
     };
-
-
+    
     try {
         let response = await fetch(url, {
             method: 'POST',
@@ -93,7 +101,9 @@ async function callRestService(prompt_text, base64String, mimeType) {
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            // Debug:
+            // throw new Error(`HTTP error! status: ${response.status} \n\n URL: ${url} \n\n Payload: ${JSON.stringify(payload)} \n\n Headers: ${JSON.stringify(headers)}`);
+            throw new Error(`HTTP error! status: ${response.status} \n\n URL: ${url} \n\n`);
         }
 
         let data = await response.json();
@@ -121,8 +131,75 @@ async function callRestService(prompt_text, base64String, mimeType) {
     return return_response;
 }
 
+async function taSSOLogin(context) {
+    try {
+        let sessionID = "";
+        const ssoUrl = config.totalAgilityEndpoint + "/users/sessions/single-sign-on";
+
+        let ssoPayload = {
+            "UserId": ""
+        }
+        if (config.totalAgilityUseTestUser === "true" ) {
+            // Use test user SSO login:
+            ssoPayload.UserId = config.totalAgilityTestUserName;
+        } else {
+            // Production SSO login:
+            const userInfo = await getCurrentUserIdAndEmail(context);
+            ssoPayload.UserId = userInfo.email; // Assumes the user's email is their TA UserID
+        }
+
+        // Use the API key as the authorization for SSO login:
+        const ssoHeaders = {
+            'Content-Type': 'application/json',
+            'Authorization': '' + config.totalAgilityApiKey + ''
+        };
+
+        // Get the SSO token
+        let ssoResponse = await fetch(ssoUrl, {
+            method: 'POST',
+            headers: ssoHeaders,
+            body: JSON.stringify(ssoPayload)
+        });
+
+        if (!ssoResponse.ok) {
+            throw new Error(`HTTP error! status: ${ssoResponse.status} \n\n URL: ${ssoUrl} \n\n Use Test user: ${config.totalAgilityUseTestUser} \n\n Test UserID: ${config.totalAgilityTestUserName} \n\n Payload: ${JSON.stringify(ssoPayload)}  `);
+        }
+
+        let ssoData = await ssoResponse.json();
+        sessionID = ssoData.SessionId;
+        return sessionID;
+
+    } catch (error) {
+        console.error('SSO Login Error: ', error);
+        // return 'Error during SSO Login: ' + error;
+        throw error; // Bubble up the error
+    }
+}
+
+/**
+ * Gets the current user's Teams ID and email address.
+ * @param {TurnContext} context - The turn context from the bot.
+ * @returns {Promise<{id: string, email: string}>}
+ */
+async function getCurrentUserIdAndEmail(context) {
+  try {
+    // Fetch the member info using the user's Teams ID
+    const member = await TeamsInfo.getMember(context, context.activity.from.id);
+    // member.id is the Teams user ID, member.email is the user's email
+    return {
+      id: member.id,
+      email: member.email
+    };
+  } catch (error) {
+    // Handle the case where the member info can't be retrieved
+    console.error('Failed to get user info:', error);
+    return null;
+  }
+}
+
 // Export the functions
 module.exports = {
     tester,
-    callRestService
+    callRestService,
+    taSSOLogin
 };

@@ -15,6 +15,12 @@ param totalAgilityAgentName string
 @secure()
 param totalAgilityAgentId string
 
+@secure()
+param totalAgilityTestUserName string
+
+@secure()
+param totalAgilityUseTestUser string
+
 param webAppSKU string
 
 @maxLength(42)
@@ -90,6 +96,14 @@ resource webApp 'Microsoft.Web/sites@2021-02-01' = {
         {
           name: 'TOTALAGILITY_AGENT_ID'
           value: totalAgilityAgentId
+        }
+        {
+          name: 'TOTALAGILITY_TEST_USERNAME'
+          value: totalAgilityTestUserName
+        }
+        {
+          name: 'TOTALAGILITY_USE_TEST_USER'
+          value: string(totalAgilityUseTestUser)
         }
       ]
       ftpsState: 'FtpsOnly'
