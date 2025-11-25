@@ -25,8 +25,16 @@ class TeamsBot extends TeamsActivityHandler {
       await context.sendActivity(Utils.getRandomLoadingMessage()); // Should be displayed without waiting for the handleMessageWithLoadingIndicator to finish first
       //await context.sendActivities([{ type: 'typing' }]);
 
+      await context.sendActivities([{ type: 'typing' }]);
+      // For now: 
+      ssoKey = await TotalAgilityAgent.taSSOLogin(context); // Get the SSO Key from TotalAgility each time, as this API will return an existing session as opposed to creating new ones each time.
+
+      /* 
       // Try to get the SSO key from state
       ssoKey = await this.ssoKeyAccessor.get(context);
+
+      // TODO add logic to handle expired SSO keys
+      // Or simply refresh the SSO key on each message? Waiting for guidance from TotalAgility team.
 
       if (!ssoKey) {
         await context.sendActivity(`Signing into TotalAgility...`);
@@ -40,8 +48,9 @@ class TeamsBot extends TeamsActivityHandler {
         // Debug:
         //await context.sendActivity(`TotalAgility sign-in complete... SSO Key: ${ssoKey}`);
       }
+      */
 
-      await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed
+      await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed  
       await this.handleMessageWithLoadingIndicator(context,ssoKey); // Call the TA Agent / API
       await next();
     });
