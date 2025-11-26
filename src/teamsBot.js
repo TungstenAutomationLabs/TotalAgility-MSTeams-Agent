@@ -15,7 +15,7 @@ let ssoKey = ""; // Variable to hold the SSO key
 
 class TeamsBot extends TeamsActivityHandler {
   constructor(userState, ssoKeyAccessor) {
-  // constructor() {
+    // constructor() {
     super();
     this.userState = userState;
     this.ssoKeyAccessor = ssoKeyAccessor;
@@ -51,7 +51,7 @@ class TeamsBot extends TeamsActivityHandler {
       */
 
       await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed  
-      await this.handleMessageWithLoadingIndicator(context,ssoKey); // Call the TA Agent / API
+      await this.handleMessageWithLoadingIndicator(context, ssoKey); // Call the TA Agent / API
       await next();
     });
 
@@ -73,7 +73,7 @@ class TeamsBot extends TeamsActivityHandler {
     });
   }
 
-  async handleMessageWithLoadingIndicator(context,ssoKey) {
+  async handleMessageWithLoadingIndicator(context, ssoKey) {
     await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed
     console.log("Running with Message Activity.");
 
@@ -118,7 +118,7 @@ class TeamsBot extends TeamsActivityHandler {
             const fileBuffer = Buffer.from(response.data);
 
             // Convert file buffer contents to a base64 string, to send to TotalAgility:
-            base64String = fileBuffer.toString('base64'); 
+            base64String = fileBuffer.toString('base64');
 
             // Debug:
             //await context.sendActivity(`File ${fileName} received and converted to base64! Sending to Agent: ${config.totalAgilityAgentName} \n ${base64String.substring(0, 100)}...`); // Send first 100 characters only for brevity
@@ -139,14 +139,35 @@ class TeamsBot extends TeamsActivityHandler {
       }
       // End file handling code.
 
+      // Set up periodic "still processing" messages
+      let intervals = [5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 55000, 60000]; // 5s, 10s, 15s, 20s...
+      let timers = [];
+      let isDone = false;
+
+      // Set up timers to send "still working" messages
+      intervals.forEach((delay, idx) => {
+        timers[idx] = setTimeout(async () => {
+          if (!isDone) {
+            await context.sendActivity(`${Utils.getRandomProgressMessage()}\n (${(delay / 1000)} seconds elapsed)`);
+            await context.sendActivities([{ type: 'typing' }]); 
+          }
+        }, delay);
+      });
+
       // Send just the most recent prompt to TotalAgility: 
       // let agentResponse = await TotalAgilityAgent.callRestService(userRequest);
 
       // Send the whole conversation history to  the TA Agent / API.
       let agentResponse = await TotalAgilityAgent.callRestService(Utils.renderConversationHistoryMarkdown(messageArray), base64String, mimeType, ssoKey); // Pass the base64 string if a file was attached
       await context.sendActivity(agentResponse); // Send the response to the user
+
+      // Mark as done to stop further "still working" messages
+      isDone = true;
+      // Clear all timers
+      timers.forEach(timer => clearTimeout(timer));
+
       saveMsg("TotalAgility Bot", agentResponse); // Save a copy of the reply message
-      
+
     } catch (error) {
       await context.sendActivity(`An error occurred: ${error.message}`);
     }
@@ -169,56 +190,56 @@ function saveMsg(actor, message) {
 
 
 function getMimeType(ext) {
-    // Remove leading dot if present and convert to lowercase
-    ext = ext.replace(/^\./, '').toLowerCase();
+  // Remove leading dot if present and convert to lowercase
+  ext = ext.replace(/^\./, '').toLowerCase();
 
-    // TODO - align to list of supported types in TotalAgility & reject if unsupported (currently handled TA side)
+  // TODO - align to list of supported types in TotalAgility & reject if unsupported (currently handled TA side)
 
-    // Common extension to MIME type mapping
-    const mimeTypes = {
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'png': 'image/png',
-        'gif': 'image/gif',
-        'bmp': 'image/bmp',
-        'webp': 'image/webp',
-        'svg': 'image/svg+xml',
-        'ico': 'image/x-icon',
-        'tiff': 'image/tiff',
-        'pdf': 'application/pdf',
-        'txt': 'text/plain',
-        'html': 'text/html',
-        'htm': 'text/html',
-        'css': 'text/css',
-        'tif': 'image/tiff',
-        'tiff': 'image/tiff',
-        'js': 'application/javascript',
-        'json': 'application/json',
-        'xml': 'application/xml',
-        'csv': 'text/csv',
-        'zip': 'application/zip',
-        'rar': 'application/vnd.rar',
-        'tar': 'application/x-tar',
-        'gz': 'application/gzip',
-        'mp3': 'audio/mpeg',
-        'wav': 'audio/wav',
-        'ogg': 'audio/ogg',
-        'mp4': 'video/mp4',
-        'avi': 'video/x-msvideo',
-        'mov': 'video/quicktime',
-        'wmv': 'video/x-ms-wmv',
-        'flv': 'video/x-flv',
-        'mkv': 'video/x-matroska',
-        'doc': 'application/msword',
-        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'xls': 'application/vnd.ms-excel',
-        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'ppt': 'application/vnd.ms-powerpoint',
-        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        // Add more as needed
-    };
+  // Common extension to MIME type mapping
+  const mimeTypes = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'bmp': 'image/bmp',
+    'webp': 'image/webp',
+    'svg': 'image/svg+xml',
+    'ico': 'image/x-icon',
+    'tiff': 'image/tiff',
+    'pdf': 'application/pdf',
+    'txt': 'text/plain',
+    'html': 'text/html',
+    'htm': 'text/html',
+    'css': 'text/css',
+    'tif': 'image/tiff',
+    'tiff': 'image/tiff',
+    'js': 'application/javascript',
+    'json': 'application/json',
+    'xml': 'application/xml',
+    'csv': 'text/csv',
+    'zip': 'application/zip',
+    'rar': 'application/vnd.rar',
+    'tar': 'application/x-tar',
+    'gz': 'application/gzip',
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'ogg': 'audio/ogg',
+    'mp4': 'video/mp4',
+    'avi': 'video/x-msvideo',
+    'mov': 'video/quicktime',
+    'wmv': 'video/x-ms-wmv',
+    'flv': 'video/x-flv',
+    'mkv': 'video/x-matroska',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'ppt': 'application/vnd.ms-powerpoint',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    // Add more as needed
+  };
 
-    return mimeTypes[ext] || null;
+  return mimeTypes[ext] || null;
 }
 
 

@@ -16,6 +16,20 @@ const loading_messages = [
     "No problem, let me look that up for you."
   ];
 
+const progress_messages = [
+    "Still working on it, thanks for your patience!",
+    "I'm making progress, please hold on a bit longer.",    
+    "Thanks for waiting, I'm still on it!",
+    "Appreciate your patience, I'm still working on your request.",
+    "I'm getting closer to the answer, thanks for bearing with me!",
+    "Still processing your request, thank you for your understanding.",
+    "I'm still on the job, thanks for sticking with me!",
+    "Making headway, please hold on a little longer.",
+    "Sorry for the wait, I'm still working on it!",
+    "Apologies for the delay, this is taking a bit longer than expected."
+];
+
+
 function renderConversationHistory(conversationArray) {
     // Create a container for the conversation
     const conversationContainer = document.createElement('div');
@@ -84,9 +98,15 @@ function getRandomLoadingMessage() {
     return loading_messages[randomIndex];
 }
 
+function getRandomProgressMessage() {
+    const randomIndex = Math.floor(Math.random() * progress_messages.length);
+    return progress_messages[randomIndex];
+}
+
 // Export the functions
 module.exports = {
     renderConversationHistory,
     renderConversationHistoryMarkdown,
-    getRandomLoadingMessage
+    getRandomLoadingMessage,
+    getRandomProgressMessage
 };
