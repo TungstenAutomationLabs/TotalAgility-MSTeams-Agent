@@ -43,6 +43,10 @@
                             "description": "What tasks are you able to do for me?"
                         },
                         {
+                            "title": "Clear Conversation History",
+                            "description": "Clears the Agents conversation history."
+                        },
+                        {
                             "title": "What is in my workqueue today?",
                             "description": "Searches the TotalAgility work queue & active jobs using the provided prompt."
                         },

@@ -22,37 +22,49 @@ class TeamsBot extends TeamsActivityHandler {
 
     this.onMessage(async (context, next) => {
 
-      await context.sendActivity(Utils.getRandomLoadingMessage()); // Should be displayed without waiting for the handleMessageWithLoadingIndicator to finish first
-      //await context.sendActivities([{ type: 'typing' }]);
-
-      await context.sendActivities([{ type: 'typing' }]);
-      // For now: 
-      ssoKey = await TotalAgilityAgent.taSSOLogin(context); // Get the SSO Key from TotalAgility each time, as this API will return an existing session as opposed to creating new ones each time.
-
-      /* 
-      // Try to get the SSO key from state
-      ssoKey = await this.ssoKeyAccessor.get(context);
-
-      // TODO add logic to handle expired SSO keys
-      // Or simply refresh the SSO key on each message? Waiting for guidance from TotalAgility team.
-
-      if (!ssoKey) {
-        await context.sendActivity(`Signing into TotalAgility...`);
-        await context.sendActivities([{ type: 'typing' }]);
-        // If not present, call your async function to get it
-        ssoKey = await TotalAgilityAgent.taSSOLogin(context); // Get the SSO Key from TotalAgility
-    
-        // Store the SSO key in state for future use
-        await this.ssoKeyAccessor.set(context, ssoKey);
-        await context.sendActivity(`TotalAgility sign-in complete.`);
+      if (context.activity.text.toLowerCase().match(/^(clear conversation history|clear history|clear|reset)$/)) {
         // Debug:
-        //await context.sendActivity(`TotalAgility sign-in complete... SSO Key: ${ssoKey}`);
-      }
-      */
+        // await context.sendActivity("Current conversation history: " + Utils.renderConversationHistoryMarkdown(messageArray));
+        // Clear the conversation history:
+        messageArray = [];
+        await context.sendActivity("Conversation history reset.");
+      } else {
 
-      await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed  
-      await this.handleMessageWithLoadingIndicator(context, ssoKey); // Call the TA Agent / API
-      await next();
+        await context.sendActivity(Utils.getRandomLoadingMessage()); // Should be displayed without waiting for the handleMessageWithLoadingIndicator to finish first
+        //await context.sendActivities([{ type: 'typing' }]);
+
+        await context.sendActivities([{ type: 'typing' }]);
+        // For now: 
+        ssoKey = await TotalAgilityAgent.taSSOLogin(context); // Get the SSO Key from TotalAgility each time, as this API will return an existing session as opposed to creating new ones each time.
+
+        /* 
+        // Try to get the SSO key from state
+        ssoKey = await this.ssoKeyAccessor.get(context);
+  
+        // TODO add logic to handle expired SSO keys
+        // Check for a 403 (but remember to avoid an infinite loop as not all 403s will be due to expired tokens)?
+        // Or use the validate session API? 
+        // Or simply refresh the SSO key on each message? 
+        // Waiting for guidance from TotalAgility team...
+  
+        if (!ssoKey) {
+          await context.sendActivity(`Signing into TotalAgility...`);
+          await context.sendActivities([{ type: 'typing' }]);
+          // If not present, call your async function to get it
+          ssoKey = await TotalAgilityAgent.taSSOLogin(context); // Get the SSO Key from TotalAgility
+      
+          // Store the SSO key in state for future use
+          await this.ssoKeyAccessor.set(context, ssoKey);
+          await context.sendActivity(`TotalAgility sign-in complete.`);
+          // Debug:
+          //await context.sendActivity(`TotalAgility sign-in complete... SSO Key: ${ssoKey}`);
+        }
+        */
+
+        await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed  
+        await this.handleMessageWithLoadingIndicator(context, ssoKey); // Call the TA Agent / API
+        await next();
+      }
     });
 
 
@@ -140,7 +152,7 @@ class TeamsBot extends TeamsActivityHandler {
       // End file handling code.
 
       // Set up periodic "still processing" messages
-      let intervals = [5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 55000, 60000]; // 5s, 10s, 15s, 20s...
+      let intervals = [5000, 10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 110000, 120000, 130000, 140000, 150000, 160000, 170000, 180000, 190000, 200000]; // 5s, 10s, 15s, 20s...
       let timers = [];
       let isDone = false;
 
@@ -148,8 +160,9 @@ class TeamsBot extends TeamsActivityHandler {
       intervals.forEach((delay, idx) => {
         timers[idx] = setTimeout(async () => {
           if (!isDone) {
-            await context.sendActivity(`${Utils.getRandomProgressMessage()}\n (${(delay / 1000)} seconds elapsed)`);
-            await context.sendActivities([{ type: 'typing' }]); 
+            //await context.sendActivity(`${Utils.getRandomProgressMessage()}\n (${(delay / 1000)} seconds elapsed)`);
+            await context.sendActivity(`${Utils.getRandomProgressMessage()}`);
+            await context.sendActivities([{ type: 'typing' }]);
           }
         }, delay);
       });
