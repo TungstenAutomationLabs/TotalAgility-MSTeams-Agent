@@ -22,9 +22,9 @@ class TeamsBot extends TeamsActivityHandler {
 
     this.onMessage(async (context, next) => {
 
-      if (context.activity.text.toLowerCase().match(/^(clear conversation history|clear history|clear|reset)$/)) {
+      if (context.activity.text.toLowerCase().match(/^(clear conversation history|clear history|clear|reset|clear conversation)$/)) {
         // Debug:
-        // await context.sendActivity("Current conversation history: " + Utils.renderConversationHistoryMarkdown(messageArray));
+        await context.sendActivity("Current conversation history: " + Utils.renderConversationHistoryMarkdown(messageArray));
         // Clear the conversation history:
         messageArray = [];
         await context.sendActivity("Conversation history reset.");
