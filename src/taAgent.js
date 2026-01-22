@@ -11,7 +11,7 @@ function tester(text) {
     return "Hello " + text;
 }
 
-async function callRestService(prompt_text, base64String, mimeType, sessionKey) {
+async function callRestService(prompt_text, base64String, mimeType, sessionKey, fileName) {
     console.log("callRestService() called with: " + prompt_text);
 
     if (base64String) {
@@ -27,10 +27,14 @@ async function callRestService(prompt_text, base64String, mimeType, sessionKey) 
     }
 
     let return_response = "xxxx";
-    console.log("Calling TotalAgility on " + config.totalAgilityEndpoint + "/jobs/sync");
-    const url = config.totalAgilityEndpoint + "/jobs/sync";
+    console.log("Calling TotalAgility on " + config.totalAgilityEndpoint + "/jobs/progress");
+    const url = config.totalAgilityEndpoint + "/jobs/progress";
 
     // Note some hard coded values for the process ID, seed etc.
+    // Note, removed previous syntax:    
+    // ...(mimeType ? {
+    // } : {}),
+    // Since the Documents must be present when using create job and progress.
     let payload = {
         "ProcessId": "" + config.totalAgilityAgentId + "",
         "ProcessName": "" + config.totalAgilityAgentName + "",
@@ -42,7 +46,7 @@ async function callRestService(prompt_text, base64String, mimeType, sessionKey) 
                 },
                 {
                     "Id": "TEMPERATURE",
-                    "Value": 0.8
+                    "Value": 1
                 },
                 {
                     "Id": "USE_SEED",
@@ -54,21 +58,26 @@ async function callRestService(prompt_text, base64String, mimeType, sessionKey) 
                 }
             ]
         },
-        ...(mimeType ? {
             "Documents": [
                 {
                     "MimeType": "" + mimeType + "",
-                    "RuntimeFields": [],
+                    "RuntimeFields": [
+                        {
+                            "Id": "1F8220766FAF42278F5CF8081DBF6D87",
+                            "TableRow": -1,
+                            "TableColumn": -1,
+                            "Value": "" + fileName + ""
+                        }
+                    ],
                     "FolderId": "",
-                    "DocumentTypeId": "",
+                    "DocumentTypeId": "298D0A0CFE2342A4BB66E240E9E2967D",
                     "FolderTypeId": "",
                     "Base64Data": "" + base64String + "",
                     "DocumentTypeName": "",
                     "DocumentGroupId": "",
                     "DocumentGroupName": ""
                 }
-            ]
-        } : {}),
+            ],
         "VariablesToReturn": [
             {
                 "VarId": "OUTPUT"
@@ -92,7 +101,7 @@ async function callRestService(prompt_text, base64String, mimeType, sessionKey) 
         'Content-Type': 'application/json',
         'Authorization': '' + sessionKey + ''
     };
-    
+
     try {
         let response = await fetch(url, {
             method: 'POST',
@@ -139,7 +148,7 @@ async function taSSOLogin(context) {
         let ssoPayload = {
             "UserId": ""
         }
-        if (config.totalAgilityUseTestUser === "true" ) {
+        if (config.totalAgilityUseTestUser === "true") {
             // Use test user SSO login:
             ssoPayload.UserId = config.totalAgilityTestUserName;
         } else {
@@ -182,19 +191,19 @@ async function taSSOLogin(context) {
  * @returns {Promise<{id: string, email: string}>}
  */
 async function getCurrentUserIdAndEmail(context) {
-  try {
-    // Fetch the member info using the user's Teams ID
-    const member = await TeamsInfo.getMember(context, context.activity.from.id);
-    // member.id is the Teams user ID, member.email is the user's email
-    return {
-      id: member.id,
-      email: member.email
-    };
-  } catch (error) {
-    // Handle the case where the member info can't be retrieved
-    console.error('Failed to get user info:', error);
-    return null;
-  }
+    try {
+        // Fetch the member info using the user's Teams ID
+        const member = await TeamsInfo.getMember(context, context.activity.from.id);
+        // member.id is the Teams user ID, member.email is the user's email
+        return {
+            id: member.id,
+            email: member.email
+        };
+    } catch (error) {
+        // Handle the case where the member info can't be retrieved
+        console.error('Failed to get user info:', error);
+        return null;
+    }
 }
 
 // Export the functions

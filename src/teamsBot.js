@@ -99,6 +99,7 @@ class TeamsBot extends TeamsActivityHandler {
       // Init var to hold base64 string if a file is attached:
       let base64String = "";
       let mimeType = "";
+      let fileName = "";
 
       // Check for presence of a file: 
       if (context.activity.attachments && context.activity.attachments.length > 0) {
@@ -112,7 +113,7 @@ class TeamsBot extends TeamsActivityHandler {
             const downloadUrl = attachment.content.downloadUrl;
             const contentUrl = attachment.contentUrl;
             const contentType = attachment.contentType;
-            const fileName = attachment.name;
+            fileName = attachment.name;
 
             mimeType = getMimeType(attachment.content.fileType); // Get MIME type based on file extension
 
@@ -152,7 +153,7 @@ class TeamsBot extends TeamsActivityHandler {
       // End file handling code.
 
       // Set up periodic "still processing" messages
-      let intervals = [5000, 10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 110000, 120000, 130000, 140000, 150000, 160000, 170000, 180000, 190000, 200000]; // 5s, 10s, 15s, 20s...
+      let intervals = [15000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 110000, 120000, 130000, 140000, 150000, 160000, 170000, 180000, 190000, 200000]; // 5s, 10s, 15s, 20s...
       let timers = [];
       let isDone = false;
 
@@ -171,7 +172,7 @@ class TeamsBot extends TeamsActivityHandler {
       // let agentResponse = await TotalAgilityAgent.callRestService(userRequest);
 
       // Send the whole conversation history to  the TA Agent / API.
-      let agentResponse = await TotalAgilityAgent.callRestService(Utils.renderConversationHistoryMarkdown(messageArray), base64String, mimeType, ssoKey); // Pass the base64 string if a file was attached
+      let agentResponse = await TotalAgilityAgent.callRestService(Utils.renderConversationHistoryMarkdown(messageArray), base64String, mimeType, ssoKey, fileName); // Pass the base64 string if a file was attached
       await context.sendActivity(agentResponse); // Send the response to the user
 
       // Mark as done to stop further "still working" messages

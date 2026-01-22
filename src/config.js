@@ -9,6 +9,7 @@ const config = {
   totalAgilityAgentId: process.env.TOTALAGILITY_AGENT_ID,
   totalAgilityTestUserName: process.env.TOTALAGILITY_TEST_USERNAME,
   totalAgilityUseTestUser: process.env.TOTALAGILITY_USE_TEST_USER,
+  notificationsBearerToken: process.env.NOTIFICATIONS_BEARER_TOKEN,
 };
 
 module.exports = config;
