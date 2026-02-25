@@ -31,7 +31,7 @@ const progress_messages = [
     "Still working on it, thanks for your patience!",
     "I'm making progress, please hold on a bit longer.",    
     "Thanks for waiting, I'm still on it!",
-        "Appreciate your patience, I'm still working on your request.",
+    "Appreciate your patience, I'm still working on your request.",
     "I'm getting closer to the answer, thanks for bearing with me!",
     "Still processing your request, thank you for your understanding.",
     "I'm still on the job, thanks for sticking with me!",

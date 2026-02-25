@@ -27,14 +27,19 @@ async function callRestService(prompt_text, base64String, mimeType, sessionKey, 
     }
 
     let return_response = "xxxx";
-    console.log("Calling TotalAgility on " + config.totalAgilityEndpoint + "/jobs/progress");
-    const url = config.totalAgilityEndpoint + "/jobs/progress";
+    console.log("Calling TotalAgility on " + config.totalAgilityEndpoint + "/jobs/sync");
+    const url = config.totalAgilityEndpoint + "/jobs/sync";
 
     // Note some hard coded values for the process ID, seed etc.
     // Note, removed previous syntax:    
     // ...(mimeType ? {
     // } : {}),
     // Since the Documents must be present when using create job and progress.
+    //
+    // 24/2/2026 - updated to use "/jobs/sync" only pass in the document using DOCUMENT_CONTENT, DOCUMENT_TYPE and DOCUMENT_FILENAME variables, and not use the Documents array. This is to allow the process to be called using "/jobs/sync" instead of "/jobs/progress".
+    // This avoids a race condition where the sync job only saves the document contents to the database/storage after the job completes, which means the process can't launch associated jobs by passing in a document ID (if it does, it will get a document not found, as the document has not been saved yet). 
+    // The chat process has been modified to use a separate step to create the TA document from the base64 content, and save it, passing back a document ID which can then be passed associated jobs.
+    // Using "sync" means the process runs in memory, making it faster, and the audit logs etc. are only saved after the process completes. This requires dedicated saving of docs / data if subjobs need to lookup this data.
     let payload = {
         "ProcessId": "" + config.totalAgilityAgentId + "",
         "ProcessName": "" + config.totalAgilityAgentName + "",
@@ -55,34 +60,29 @@ async function callRestService(prompt_text, base64String, mimeType, sessionKey, 
                 {
                     "Id": "SEED",
                     "Value": 27535
+                },
+                {
+                    "Id": "DOCUMENT_CONTENT",
+                    "Value": "" + base64String + ""
+                },
+                {
+                    "Id": "DOCUMENT_TYPE",
+                    "Value": "" + mimeType + ""
+                },
+                {
+                    "Id": "DOCUMENT_FILENAME",
+                    "Value": "" + fileName + ""
                 }
             ]
         },
-            "Documents": [
-                {
-                    "MimeType": "" + mimeType + "",
-                    "RuntimeFields": [
-                        {
-                            "Id": "1F8220766FAF42278F5CF8081DBF6D87",
-                            "TableRow": -1,
-                            "TableColumn": -1,
-                            "Value": "" + fileName + ""
-                        }
-                    ],
-                    "FolderId": "",
-                    "DocumentTypeId": "298D0A0CFE2342A4BB66E240E9E2967D",
-                    "FolderTypeId": "",
-                    "Base64Data": "" + base64String + "",
-                    "DocumentTypeName": "",
-                    "DocumentGroupId": "",
-                    "DocumentGroupName": ""
-                }
-            ],
+        "Documents": [],
         "VariablesToReturn": [
             {
                 "VarId": "OUTPUT"
             }
-        ]
+        ],
+        "StoreFolderAndDocuments": true,
+        "ReturnOnlySpecifiedDocuments": true
     };
 
     /*

@@ -153,7 +153,7 @@ class TeamsBot extends TeamsActivityHandler {
       // End file handling code.
 
       // Set up periodic "still processing" messages
-      let intervals = [15000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 110000, 120000, 130000, 140000, 150000, 160000, 170000, 180000, 190000, 200000]; // 5s, 10s, 15s, 20s...
+      let intervals = [15000, 22000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 110000, 120000, 130000, 140000, 150000, 160000, 170000, 180000, 190000, 200000]; // 5s, 10s, 15s, 20s...
       let timers = [];
       let isDone = false;
 

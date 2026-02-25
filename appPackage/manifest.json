@@ -53,27 +53,7 @@
                         {
                             "title": "Work Item Details",
                             "description": "Give me the details of job: 58710728C9EF11EFA8502818785AA6F9"
-                        },
-                        {
-                            "title": "Shipments clearing customs today",
-                            "description": "What shipments do we have clearing customs today?"
-                        },
-                        {
-                            "title": "Shipments details",
-                            "description": "Can you get me all the details of that shipment?"
-                        },
-                        {
-                            "title": "Hazardous material handling",
-                            "description": "What are the operating procedures for handling that kind of material?"
-                        },
-                        {
-                            "title": "Shipment Cross-Checking",
-                            "description": "Are all the documents in order for this shipment?"
-                        },
-                        {
-                            "title": "Goods Acceptance",
-                            "description": "Initiate the eSigning process to complete acceptance and release of the goods."
-                        }  
+                        }
                     ]
                 }
             ]
