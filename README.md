@@ -1,99 +1,129 @@
-# Teams Chat UI for TotalAgility Agents
-This sample application illustrates connecting to TotalAgility Agents or Custom LLMs using REST APIs. 
 
-Provides a lightweight MS Teams / Bot Framework UI to front a TotalAgility Automation Agent, proxying user interactions via Teams to the Agent running in TotalAgility, then displaying the Agent's responses.
+# Teams Chat UI for TotalAgility Agents
+
+This repository is a lightweight Microsoft Teams front-end (using the Microsoft Bot Framework) that proxies chat interactions to TotalAgility Agents or custom LLM-backed Agents via REST APIs. It displays agent responses in Teams while leaving the automation, data access, and LLM logic inside TotalAgility.
 
 ![Example screenshot of an interaction with a TotalAgility AI Agent](img/TotalAgility-Teams-App-Screenshot.png)
 
-Agents or Custom LLM processes in TotalAgility are synchronous AI powered automation process built with the TotalAgility low code designer.
+Key capabilities:
+- Proxy Teams chat to a TotalAgility Agent (or Custom LLM) using REST/OpenAPI
+- Preserve and pass conversation history to the Agent to maintain context
+- Support for sending documents (file upload) to the Agent (see Version notes)
+- Minimal Teams-side logic so the Agent process in TotalAgility can own orchestration, knowledge access and calling other sub-agents
 
-They provide a standard interface for both chat, document and API interactions. 
+Why use this sample
+- It demonstrates how Teams can be used as a UI for complex automation and LLM-driven processes implemented in TotalAgility (workflows, case management, RPA, IDP, knowledge base lookups, document generation, eSigning, etc.).
 
-This Teams application front end calls the Agent in TotalAgility and displays the response. All logic for automation, data, knowledge base and LLM calls are managed in the TotalAgility Agent, opening access from teams to a wide range of automation capabilities including: 
-- Workflows & business process management 
-- Case management
-- SLA monitoring & management
-- Worktype modelling, status tracking, process events and milestones
-- Agent governace & auditing
-- IDP
-- RPA
-- Document Generation
-- eSigning
-- Document generation & transformation 
-- Knowledge base creation & management
-- Automated knowledge discovery 
+Architecture summary
+- The Teams app acts as a thin proxy: it accepts user messages, forwards them (with conversation history) to a TotalAgility Agent endpoint, then renders the Agent's response in Teams.
+- The recommended pattern is an "Intent Router Agent" in TotalAgility that receives the prompt, evaluates intent via an LLM step, and routes to specific sub-agents/processes (each with the same Agent interface).
 
-By using Agents in TotalAgility to lauch cases, workflows and automation flows, the Agent is the gateway to a wider world of automation.
+Supported channels
+- Microsoft Teams (primary)
+- Any Bot Framework channel (Webchat, Facebook Messenger, WhatsApp, Alexa, etc.) with minimal changes.
 
-This code sample acts as a proxy to the TotalAgility Agent interface, passing in calls and conversation history, and displaying the responses. As such it only implements basic Teams functionality leaving the core chat / agent logics to the processes running in TotalAgility. 
+Project structure and where to make edits
+- appPackage/: Teams app manifest and package. Example prompts and app configuration live in `appPackage/manifest.json`.
+- src/: core application code
+	- `src/index.js` — app entry point and server bootstrap
+	- `src/config.js` — configuration loader and environment handling
+	- `src/taAgent.js` — main TotalAgility API integration and the primary place to change how the app calls your Agent (seed usage, request shape, headers, error handling)
+	- `src/teamsBot.js` — Teams/Microsoft Bot framework adapter and conversation turn handling
+	- `src/taAgent.js` — primary API wrapper for calling TotalAgility (modify this to change request/response handling)
+	- `src/utils.js` — helper functions including loading/typing feedback messages (customize UI text here)
+- env/: environment template files — update these to match your tenant, keys and Agent details
+- infra/: infrastructure deployment scripts (Azure Bicep templates used for provisioning, if desired)
+- devTools/: developer utilities (Teams App Tester, etc.)
 
-As it is implemented using the Microsoft Bot framework, they application can be used in other chat and voice environments, including:
-- Webchat
-- Facebook Messenger
-- Alexa
-- WhatsApp
-- etc.
+Important files to edit for common tasks
+- Change the Agent integration or modify request details: `src/taAgent.js`
+- Adjust loading/typing UI and helper utilities: `src/utils.js`
+- For Teams-specific behaviour or message formatting, update `src/teamsBot.js` and `src/index.js`.
+- Keep environment-specific secrets out of source control. Use the `env/` templates and local environment variables when running locally.
 
-The logic in the Teams code is minimal, providing:
-- Connectivity to the TotalAgility API
-- Maintaining conversation history (which is passed to each TotalAgility API call, thus maintaining state over multiple invocations of the API)
-- Display of user feedback in the form of loading messages and "typing" feedback
+Environment variables / configuration
+Place your environment values in the files under `env/` (or in your system environment). The sample adds the following keys:
 
-The code is implemented in node.js and can be run locally or deployed to a Mircosoft 365 environment. 
+```
+TOTALAGILITY_ENDPOINT=
+TOTALAGILITY_API_KEY=
+TOTALAGILITY_AGENT_NAME=
+TOTALAGILITY_AGENT_ID=
+TOTALAGILITY_TEST_USERNAME=
+TOTALAGILITY_USE_TEST_USER=
+```
 
-The base package is based from the VS Code template:
-Teams > Development > Create New App > Bot
+Notes on these values
+- `TOTALAGILITY_ENDPOINT` — base TotalAgility REST/OpenAPI endpoint, e.g. `https://{{your_tenant}}.dev.kofaxcloud.com/services/sdk/v1`
+- `TOTALAGILITY_API_KEY` — API key used to authenticate calls to TotalAgility
+- `TOTALAGILITY_AGENT_NAME` — the process name of the Agent in TotalAgility
+- `TOTALAGILITY_AGENT_ID` — the process ID (often visible in the TotalAgility Designer edit URL)
+- `TOTALAGILITY_TEST_USERNAME` & `TOTALAGILITY_USE_TEST_USER` — override SSO behaviour to force a test TA user (useful for development)
 
-Note that the files in the env folder need to be updated to match your environment. Specifically note the addition of 6 new fields:
-```TOTALAGILITY_ENDPOINT=```
-```TOTALAGILITY_API_KEY=```
-```TOTALAGILITY_AGENT_NAME=```
-```TOTALAGILITY_AGENT_ID=```
-```TOTALAGILITY_TEST_USERNAME=```
-```TOTALAGILITY_USE_TEST_USER=```
+Behavior notes preserved from the original sample
+- The main API call is managed in `src/taAgent.js`. The sample uses a hard-coded "seed" for consistent responses; remove or change this if you want nondeterministic LLM outputs.
+- Loading messages can be configured in `src/utils.js`.
+- Example prompts are available in `appPackage/manifest.json`.
 
+How the Intent Router pattern works (summary from original README)
+- A controlling "Intent Router Agent" evaluates incoming prompts using an LLM step and maps them to available actions / sub-agents. The router provides a registry of available agents (with ProcessIDs) and returns JSON mapped to the TotalAgility data model describing which sub-process to invoke and which prompt to send.
+- Because all agents expose a common interface, the registry can include many agents; the router chooses the best match and may iterate multiple steps (search KB, call external APIs, gather documents) before returning a final response.
 
-The TotalAgility endpoint is the base TA Rest / OpenAPI endpoint. For more details see the TotalAgility documentation. 
-```https://{{your_tenant}}.dev.kofaxcloud.com/services/sdk/v1```
+Example resources
+- Tutorial video: Creating a Basic AI Agent in TotalAgility — https://www.tungstendemocenter.com/items/creating-a-basic-ai-agent-in-totalagility
 
-The Agent Name is the Process Name of the Agent process in TotalAgility.
+Version notes (preserved)
+### Version 1.1
+- Added the ability to upload files and send these to the TotalAgility Agent for processing. This sample uses TotalAgility 25.2 where the Agent interface accepts TotalAgility Documents (sent as base64 strings) to the Jobs sync API.
 
-The Agent ID is the Process ID in TotalAgility (this is the string of digits and numbers on the end of the URL when editing the Agent process in TotalAgility Designer).
+### Version 1.2
+- Added settings to SSO a user into TotalAgility based on their email address from their Teams login.
 
-The main API call is managed in the ```src/taAgent.js``` file. Update the .env files with the corresponding details for the TA Agent you want to call. Note that this API call uses a hard coded "seed" for consistent responses, but this can be changed or omitted as desired. 
+*Note:* the code assumes the user's email address (from their MS Teams login) is their user ID in TotalAgility. To override this, specify a test user in the environment and set the `TOTALAGILITY_USE_TEST_USER` flag to `true`.
 
-Loading messages can be configured in the ```src/utils.js``` file. 
+Environment variables for SSO testing:
 
-Exampe prompts can be set in the ```appPackage/manifest.json``` file. 
+```
+TOTALAGILITY_TEST_USERNAME=my_ta_test_account@test.com
+TOTALAGILITY_USE_TEST_USER=true
+```
 
-The pattern I've used is to have a single controlling Agent process, in my environment called the "Intent Router Agent".
-This process, implemented as a "Custom LLM" or "Agent Process" in TotalAgility (the name used will depend on the version of TotalAgility you are using), in turn calls other agent processes depending on the prompt sent. 
+Running and developing locally
+- Install dependencies:
 
-For a basic tutorial on creating AI Agents in TotalAgility, see the following video: [Creating a Basic AI Agent in TotalAgility](https://www.tungstendemocenter.com/items/creating-a-basic-ai-agent-in-totalagility) 
+```bash
+npm install
+```
 
-The "Intent Router Agent" makes use of an LLM step to evalute the incoming prompt, and map this to one of the available actions or sub-agents. 
-The incoming prompt is combined with a prompt guiding the LLM on how to chose the intent or next action. This system prompt include a registry or list of available next actions / agents, including their ProcessIDs in the data structure. The intent evaluator step returns json data mapped to a TotalAgility Data Model embedding the details of the sub process / agent to call, and the prompt to pass in. 
+- Run the app locally (Teams development): use the Visual Studio Code tasks in this workspace or run the equivalent npm scripts. Example tasks present in the workspace:
+	- `Start Teams App (Test Tool)` — starts the app using the Test Tool configuration
+	- `Start Teams App Locally` — runs local tunnel, provision, deploy and starts the app
 
-As all agents have the same interface, the registry of available actions can be 100s of different agents, each provided with a description allowing the managing agent / intent router agent to determine an appropriate next step. 
+- Common npm scripts (available in `package.json`):
 
-The final step is an evaluation step, which determines if the agent is ready to respond, of if the agent should repeat the process to find additonal information, data or take another action (this allows the agent to undertake multiple steps to complete a task or goal, for example searcing both the internet and a knowledge base for content to use in a RAG pattern). 
+```bash
+npm run dev:teamsfx        # start locally for Teams development
+npm run dev:teamsfx:testtool  # start using the Test Tool flow
+```
 
-![Example intent router process](img/intent-router-agent-process.png)
+Editing tips
+- To change how the app calls TotalAgility (payload, headers, error handling), update `src/taAgent.js`.
+- To change user-visible loading/typing messages, update `src/utils.js`.
+- For Teams-specific behaviour or message formatting, update `src/teamsBot.js` and `src/index.js`.
+- Keep environment-specific secrets out of source control. Use the `env/` templates and local environment variables when running locally.
 
-### Version 1.1 updates:
-Added the ability to upload files and send these to the TotalAgility Agent for processing. 
+Deployment and infra
+- The `infra/` folder contains Azure Bicep templates to help provision cloud resources if you want to deploy to Azure.
 
-Note that this sample uses TotalAgility 25.2, where the Agent interface accepts TotalAgility Documents (sent as a base64 string) to Jobs sync API.
+Further work / suggestions
+- Add structured logging and telemetry for production monitoring.
+- Implement secure secret retrieval (Key Vault) for `TOTALAGILITY_API_KEY` in deployed environments.
+- Expand the Intent Router registry into a managed configuration (DB or CMS) if you have many sub-agents.
 
-### Version 1.2 updates:
-Added settings to SSO a user into TotalAgility based on their email address from their Teams login. 
+License and credits
+- See `LICENSE.md`.
 
-*NOTE:* The code assumes that the user's email address (from their MS teams login) is their user ID in TotalAgility. 
-
-To override this behaviour, you can specify a test user name in the .env files, along in a var to direct the Teams app to use this user ID instead of the logged in users account.
-
-Added 2 new environment variables to control this behaviour:
-
-```TOTALAGILITY_TEST_USERNAME=my_ta_test_account@test.com```
-```TOTALAGILITY_USE_TEST_USER=true```
+If you'd like, I can:
+- run the local dev task to verify the app starts, or
+- open `src/taAgent.js` and add inline comments that explain where to change request/response handling.
 
