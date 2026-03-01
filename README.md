@@ -88,7 +88,7 @@ TOTALAGILITY_TEST_USERNAME=my_ta_test_account@test.com
 TOTALAGILITY_USE_TEST_USER=true
 ```
 
-Running and developing locally
+### Running and developing locally
 - Install dependencies:
 
 ```bash
@@ -106,13 +106,13 @@ npm run dev:teamsfx        # start locally for Teams development
 npm run dev:teamsfx:testtool  # start using the Test Tool flow
 ```
 
-Editing tips
+### Editing tips
 - To change how the app calls TotalAgility (payload, headers, error handling), update `src/taAgent.js`.
 - To change user-visible loading/typing messages, update `src/utils.js`.
 - For Teams-specific behaviour or message formatting, update `src/teamsBot.js` and `src/index.js`.
 - Keep environment-specific secrets out of source control. Use the `env/` templates and local environment variables when running locally.
 
-Deployment and infra
+### Deployment and infra
 - The `infra/` folder contains Azure Bicep templates to help provision cloud resources if you want to deploy to Azure.
 
 
