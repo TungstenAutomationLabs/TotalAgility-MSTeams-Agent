@@ -72,7 +72,7 @@ How the Intent Router pattern works (summary from original README)
 Example resources
 - Tutorial video: Creating a Basic AI Agent in TotalAgility — https://www.tungstendemocenter.com/items/creating-a-basic-ai-agent-in-totalagility
 
-Version notes (preserved)
+Version notes 
 ### Version 1.1
 - Added the ability to upload files and send these to the TotalAgility Agent for processing. This sample uses TotalAgility 25.2 where the Agent interface accepts TotalAgility Documents (sent as base64 strings) to the Jobs sync API.
 
