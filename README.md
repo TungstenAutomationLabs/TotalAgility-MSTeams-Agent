@@ -115,15 +115,5 @@ Editing tips
 Deployment and infra
 - The `infra/` folder contains Azure Bicep templates to help provision cloud resources if you want to deploy to Azure.
 
-Further work / suggestions
-- Add structured logging and telemetry for production monitoring.
-- Implement secure secret retrieval (Key Vault) for `TOTALAGILITY_API_KEY` in deployed environments.
-- Expand the Intent Router registry into a managed configuration (DB or CMS) if you have many sub-agents.
 
-License and credits
-- See `LICENSE.md`.
-
-If you'd like, I can:
-- run the local dev task to verify the app starts, or
-- open `src/taAgent.js` and add inline comments that explain where to change request/response handling.
 
