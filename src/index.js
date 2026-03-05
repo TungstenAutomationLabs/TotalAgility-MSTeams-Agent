@@ -17,6 +17,14 @@
  * @see {@link https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/conversations/send-proactive-messages} Proactive messaging guide
  */
 
+// ── Node.js crypto polyfill ───────────────────────────────────────────────────
+// Some Azure App Service Node.js runtimes don't expose `globalThis.crypto`
+// (required by @typespec/ts-http-runtime for UUID generation).  Polyfill it
+// from the built-in `node:crypto` module before any other imports.
+if (!globalThis.crypto) {
+  globalThis.crypto = require("crypto");
+}
+
 // ── Dependencies ──────────────────────────────────────────────────────────────
 const express = require("express");
 const helmet = require("helmet");
