@@ -1,7 +1,7 @@
 const { TeamsActivityHandler, TurnContext } = require("botbuilder");
 
 const TotalAgilityAgent = require('./taAgent.js');
-//const config = require("./config"); // Uncomment for some debug steps
+const config = require("./config");
 const Utils = require('./utils.js');
 const conversationStore = require('./conversationStore.js');
 
@@ -106,29 +106,38 @@ class TeamsBot extends TeamsActivityHandler {
    * Persist the conversation reference for the current user so that
    * proactive messages can be sent later via the /api/notifications endpoint.
    *
-   * The key used is the user's email when available (from Teams member info),
-   * falling back to the user name from the activity.
+   * The key follows the same logic as the SSO login in taAgent.js:
+   *  - If TOTALAGILITY_USE_TEST_USER is "true", use TOTALAGILITY_TEST_USERNAME
+   *  - Otherwise, resolve the Teams user's email via TeamsInfo
+   *  - Fall back to the user's display name or ID
    */
   async _saveConversationReference(context) {
     try {
       const ref = TurnContext.getConversationReference(context.activity);
-      // Determine user key — prefer email, fall back to name, then AAD object ID
       let userKey = null;
-      if (context.activity.from && context.activity.from.aadObjectId) {
-        // Try to resolve email via TeamsInfo
-        try {
-          const { TeamsInfo } = require('botbuilder');
-          const member = await TeamsInfo.getMember(context, context.activity.from.id);
-          if (member && member.email) {
-            userKey = member.email;
+
+      if (config.totalAgilityUseTestUser === "true") {
+        // Test mode — use the configured test username
+        userKey = config.totalAgilityTestUserName;
+      } else {
+        // Production — resolve the Teams user's email
+        if (context.activity.from && context.activity.from.aadObjectId) {
+          try {
+            const { TeamsInfo } = require('botbuilder');
+            const member = await TeamsInfo.getMember(context, context.activity.from.id);
+            if (member && member.email) {
+              userKey = member.email;
+            }
+          } catch (_) {
+            // Swallow — not always available (e.g. during conversationUpdate)
           }
-        } catch (_) {
-          // Swallow — not always available (e.g. during conversationUpdate)
+        }
+        // Fall back to display name or ID
+        if (!userKey && context.activity.from) {
+          userKey = context.activity.from.name || context.activity.from.id;
         }
       }
-      if (!userKey && context.activity.from) {
-        userKey = context.activity.from.name || context.activity.from.id;
-      }
+
       if (userKey) {
         await conversationStore.save(userKey, ref);
         console.log("[TeamsBot] Saved conversation reference for:", userKey);
