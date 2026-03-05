@@ -147,6 +147,34 @@ The bot exposes two HTTP endpoints that allow external / 3rd-party applications 
 2. Set the `AZURE_STORAGE_CONNECTION_STRING` environment variable for persistent storage (optional but recommended for production).
 3. The target user must have interacted with the bot at least once (or had the bot installed) so that their conversation reference is stored.
 
+#### Finding your endpoint URL
+
+The notification endpoint URL depends on where the bot is running:
+
+| Environment | Base URL | How to find it |
+|-------------|----------|----------------|
+| **Local development** | `http://localhost:3978` | Default port configured in `src/index.js`. The bot listens on port `3978` unless overridden by the `PORT` environment variable. |
+| **Azure (deployed)** | `https://<BOT_DOMAIN>` | After running `teamsapp provision` and `teamsapp deploy`, the `BOT_DOMAIN` value is written to `env/.env.dev`. Open that file and look for a line like `BOT_DOMAIN=botb556a8.azurewebsites.net`. Your full URL is `https://` + that value. |
+
+**Full endpoint URLs:**
+
+| Endpoint | Local URL | Azure URL |
+|----------|-----------|-----------|
+| Send notification | `POST http://localhost:3978/api/notifications` | `POST https://<BOT_DOMAIN>/api/notifications` |
+| List conversations | `GET http://localhost:3978/api/conversations` | `GET https://<BOT_DOMAIN>/api/conversations` |
+
+**Where to find each configuration value:**
+
+| Value | Where to find it |
+|-------|-----------------|
+| **Bot hostname** (`BOT_DOMAIN`) | `env/.env.dev` — populated after `teamsapp provision`. Example: `botb556a8.azurewebsites.net` |
+| **Bearer token** | `SECRET_NOTIFICATIONS_BEARER_TOKEN` in your `env/.env.dev.user` (or `env/.env.local`, `env/.env.testtool` for local dev) |
+| **User key** | The email address of any user who has messaged the bot. Verify available users via `GET /api/conversations`. |
+
+**Public access:** Azure App Service is publicly accessible by default over HTTPS (port 443). No additional networking configuration is needed — if the Bot Framework Channel Service can reach your bot at `https://<BOT_DOMAIN>/api/messages`, then 3rd-party apps can reach `/api/notifications` at the same hostname.
+
+> **Tip — restricting access:** If you want to limit which systems can call the notification endpoint (beyond bearer-token auth), configure **Azure App Service → Networking → Access Restrictions** in the Azure Portal to whitelist specific IP ranges.
+
 #### `POST /api/notifications`
 
 Send a proactive message to a specific user.
