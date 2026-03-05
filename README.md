@@ -51,6 +51,7 @@ TOTALAGILITY_AGENT_NAME=
 TOTALAGILITY_AGENT_ID=
 TOTALAGILITY_TEST_USERNAME=
 TOTALAGILITY_USE_TEST_USER=
+CONVERSATION_HISTORY_MAX_ENTRIES=
 NOTIFICATIONS_BEARER_TOKEN=
 AZURE_STORAGE_CONNECTION_STRING=
 ```
@@ -61,6 +62,7 @@ Notes on these values
 - `TOTALAGILITY_AGENT_NAME` — the process name of the Agent in TotalAgility
 - `TOTALAGILITY_AGENT_ID` — the process ID (often visible in the TotalAgility Designer edit URL)
 - `TOTALAGILITY_TEST_USERNAME` & `TOTALAGILITY_USE_TEST_USER` — override SSO behaviour to force a test TA user (useful for development)
+- `CONVERSATION_HISTORY_MAX_ENTRIES` — maximum number of messages to retain in the conversation history array sent to the TotalAgility Agent. Defaults to `10` if not set or invalid. Higher values provide more context but increase payload size.
 
 - `NOTIFICATIONS_BEARER_TOKEN` — a secret token that 3rd-party callers must present as a `Bearer` token when calling the notification endpoints. **Required** to enable `/api/notifications` and `/api/conversations`.
 - `AZURE_STORAGE_CONNECTION_STRING` — connection string for an Azure Storage account used to persist conversation references in Azure Table Storage. When absent the app falls back to an in-memory store (references are lost on restart). For local development with Azurite use `UseDevelopmentStorage=true`.
@@ -123,6 +125,7 @@ npm run dev:teamsfx:testtool  # start using the Test Tool flow
 - For Teams-specific behaviour or message formatting, update `src/teamsBot.js` and `src/index.js`.
 - Keep environment-specific secrets out of source control. Use the `env/` templates and local environment variables when running locally.
 
+<<<<<<< HEAD
 ### Proactive Notifications API
 
 The bot exposes two HTTP endpoints that allow external / 3rd-party applications to send messages directly into a user's Teams chat with the bot. This follows the [official Microsoft proactive messaging pattern](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/conversations/send-proactive-messages).
@@ -270,6 +273,8 @@ Authorization: Bearer <NOTIFICATIONS_BEARER_TOKEN>
 3. When a 3rd-party app calls `POST /api/notifications`, the bot uses `adapter.continueConversationAsync()` with the stored reference to send the message into the user's existing personal chat with the bot.
 4. The user receives the notification as a new message from the bot in Teams — no user action required.
 
+=======
+>>>>>>> 103246da6fca8b9cfcfaa5c89a709f9ba1a8c353
 ### Deployment and infra
 - The `infra/` folder contains Azure Bicep templates to help provision cloud resources if you want to deploy to Azure.
 

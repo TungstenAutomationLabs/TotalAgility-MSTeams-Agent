@@ -13,6 +13,8 @@ const config = {
   totalAgilityTemperature: process.env.TOTALAGILITY_TEMPERATURE,
   totalAgilityUseSeed: process.env.TOTALAGILITY_USE_SEED,
   totalAgilitySeed: process.env.TOTALAGILITY_SEED,
+  // Conversation history
+  conversationHistoryMaxEntries: process.env.CONVERSATION_HISTORY_MAX_ENTRIES,
   // Proactive notifications
   notificationsBearerToken: process.env.NOTIFICATIONS_BEARER_TOKEN,
   // Azure Table Storage for persisting conversation references

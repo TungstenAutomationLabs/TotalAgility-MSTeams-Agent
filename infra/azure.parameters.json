@@ -39,6 +39,9 @@
     "totalAgilitySeed": {
       "value": "${{TOTALAGILITY_SEED}}"
     },
+    "conversationHistoryMaxEntries": {
+      "value": "${{CONVERSATION_HISTORY_MAX_ENTRIES}}"
+    },
     "notificationsBearerToken": {
       "value": "${{NOTIFICATIONS_BEARER_TOKEN}}"
     }

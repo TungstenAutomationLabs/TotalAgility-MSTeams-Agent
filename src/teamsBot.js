@@ -11,7 +11,10 @@ const fs = require('fs');
 const path = require('path');
 
 let messageArray = []; // An array to hold the current chat history.
-const messageArrayMaxSize = 10; // Max number of messages to retain in the chat history.
+const messageArrayMaxSize = (() => {
+  const val = parseInt(config.conversationHistoryMaxEntries, 10);
+  return isNaN(val) || val <= 0 ? 10 : val;
+})(); // Max number of messages to retain in the chat history (default: 10).
 let ssoKey = ""; // Variable to hold the SSO key
 
 class TeamsBot extends TeamsActivityHandler {

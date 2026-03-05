@@ -28,6 +28,9 @@ param totalAgilityTemperature string = ''
 param totalAgilityUseSeed string = ''
 param totalAgilitySeed string = ''
 
+// Conversation history
+param conversationHistoryMaxEntries string = ''
+
 // Proactive notifications
 @secure()
 param notificationsBearerToken string = ''
@@ -148,6 +151,10 @@ resource webApp 'Microsoft.Web/sites@2021-02-01' = {
         {
           name: 'TOTALAGILITY_SEED'
           value: totalAgilitySeed
+        }
+        {
+          name: 'CONVERSATION_HISTORY_MAX_ENTRIES'
+          value: conversationHistoryMaxEntries
         }
         {
           name: 'NOTIFICATIONS_BEARER_TOKEN'
