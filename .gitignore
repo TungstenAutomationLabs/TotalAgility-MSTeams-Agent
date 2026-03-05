@@ -3,7 +3,7 @@ env/.env.*.user
 env/.env.local
 .localConfigs.testTool
 
-#.localConfigs
+.localConfigs
 .notification.localstore.json
 .notification.testtoolstore.json
 appPackage/build

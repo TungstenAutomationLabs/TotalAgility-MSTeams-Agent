@@ -1,56 +1,171 @@
-const { TeamsActivityHandler, TurnContext } = require("botbuilder");
+/**
+ * @file teamsBot.js
+ * @module TeamsBot
+ * @description Microsoft Teams bot handler for the TotalAgility Agent.
+ *
+ * Extends the Bot Framework's `TeamsActivityHandler` to:
+ * - Receive user messages and forward them (with conversation history) to the
+ *   TotalAgility Agent REST API.
+ * - Handle file attachments uploaded by the user (converted to base64).
+ * - Show typing indicators and periodic "still working" messages for
+ *   long-running agent calls.
+ * - Capture and persist `ConversationReference` objects so that proactive
+ *   notifications can be delivered later via `/api/notifications`.
+ *
+ * @see {@link module:taAgent}   TotalAgility API integration
+ * @see {@link module:conversationStore}  Conversation reference persistence
+ * @see {@link module:utils}     Helper utilities (loading messages, history rendering)
+ */
 
-const TotalAgilityAgent = require('./taAgent.js');
+// ── Dependencies ──────────────────────────────────────────────────────────────
+const { TeamsActivityHandler, TurnContext, TeamsInfo } = require("botbuilder");
+const TotalAgilityAgent = require("./taAgent.js");
 const config = require("./config");
-const Utils = require('./utils.js');
-const conversationStore = require('./conversationStore.js');
+const Utils = require("./utils.js");
+const conversationStore = require("./conversationStore.js");
+const axios = require("axios");
 
-// Utils for file handling:
-const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
+// ── Module-Level State ────────────────────────────────────────────────────────
 
-let messageArray = []; // An array to hold the current chat history.
+/**
+ * Rolling conversation history sent to the TotalAgility Agent on each turn.
+ * Each entry is `{ speaker: string, message: string }`.
+ * @type {Array<{speaker: string, message: string}>}
+ */
+let messageArray = [];
+
+/**
+ * Maximum number of messages retained in `messageArray`.
+ * Configurable via the `CONVERSATION_HISTORY_MAX_ENTRIES` environment variable.
+ * @type {number}
+ * @default 10
+ */
 const messageArrayMaxSize = (() => {
   const val = parseInt(config.conversationHistoryMaxEntries, 10);
   return isNaN(val) || val <= 0 ? 10 : val;
-})(); // Max number of messages to retain in the chat history (default: 10).
-let ssoKey = ""; // Variable to hold the SSO key
+})();
 
+/** Current TotalAgility SSO session key (refreshed on every message). */
+let ssoKey = "";
+
+/**
+ * In-memory cache mapping AAD object IDs to email addresses.
+ * Avoids repeated `TeamsInfo.getMember()` HTTP round-trips.
+ * @type {Map<string, string>}
+ */
+const emailCache = new Map();
+
+/**
+ * Millisecond intervals at which periodic "still working" messages are sent
+ * while awaiting a TotalAgility Agent response.
+ * @type {number[]}
+ */
+const PROGRESS_INTERVALS = [
+  15000, 22000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000,
+  110000, 120000, 130000, 140000, 150000, 160000, 170000, 180000, 190000,
+  200000,
+];
+
+/**
+ * Lookup table mapping file extensions to MIME types.
+ * Used when forwarding uploaded files to TotalAgility.
+ * @type {Object<string, string>}
+ */
+const MIME_TYPES = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  bmp: "image/bmp",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  ico: "image/x-icon",
+  tiff: "image/tiff",
+  tif: "image/tiff",
+  pdf: "application/pdf",
+  txt: "text/plain",
+  html: "text/html",
+  htm: "text/html",
+  css: "text/css",
+  js: "application/javascript",
+  json: "application/json",
+  xml: "application/xml",
+  csv: "text/csv",
+  zip: "application/zip",
+  rar: "application/vnd.rar",
+  tar: "application/x-tar",
+  gz: "application/gzip",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  mp4: "video/mp4",
+  avi: "video/x-msvideo",
+  mov: "video/quicktime",
+  wmv: "video/x-ms-wmv",
+  flv: "video/x-flv",
+  mkv: "video/x-matroska",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+};
+
+// ── TeamsBot Class ────────────────────────────────────────────────────────────
+
+/**
+ * Bot that handles incoming Teams activities and forwards user messages to the
+ * TotalAgility Agent.
+ *
+ * @extends TeamsActivityHandler
+ */
 class TeamsBot extends TeamsActivityHandler {
+  /**
+   * Create a new TeamsBot instance.
+   *
+   * @param {import("botbuilder").UserState} userState - Bot Framework UserState for per-user persistence.
+   * @param {import("botbuilder").StatePropertyAccessor} ssoKeyAccessor - State accessor for the TotalAgility SSO key.
+   */
   constructor(userState, ssoKeyAccessor) {
-    // constructor() {
     super();
     this.userState = userState;
     this.ssoKeyAccessor = ssoKeyAccessor;
 
+    // ── Message Handler ─────────────────────────────────────────────────
     this.onMessage(async (context, next) => {
       try {
-        // Capture the conversation reference for proactive messaging.
-        // This stores/updates the reference every time the user sends a message
-        // so that external systems can send notifications to this user later.
-        await this._saveConversationReference(context);
+        // Store the conversation reference for proactive notifications.
+        // Fire-and-forget so it doesn't block the message processing path.
+        this._saveConversationReference(context).catch((err) =>
+          console.error("[TeamsBot] Background save failed:", err.message)
+        );
 
-        // Guard against null/undefined text (e.g. attachment-only messages)
-        const messageText = (context.activity.text || "").toLowerCase().replace(/\n|\r/g, "").trim();
+        // Guard: context.activity.text can be null for attachment-only messages.
+        const messageText = (context.activity.text || "")
+          .toLowerCase()
+          .replace(/\n|\r/g, "")
+          .trim();
 
-        if (messageText.match(/^(clear conversation history|clear history|clear|reset|clear conversation)$/)) {
-          // Debug:
-          await context.sendActivity("Current conversation history: " + Utils.renderConversationHistoryMarkdown(messageArray));
-          // Clear the conversation history:
+        if (
+          messageText.match(
+            /^(clear conversation history|clear history|clear|reset|clear conversation)$/
+          )
+        ) {
+          await context.sendActivity(
+            "Current conversation history: " +
+              Utils.renderConversationHistoryMarkdown(messageArray)
+          );
           messageArray = [];
           await context.sendActivity("Conversation history reset.");
         } else {
+          // Send an initial loading message and typing indicator.
+          await context.sendActivity(Utils.getRandomLoadingMessage());
+          await context.sendActivities([{ type: "typing" }]);
 
-          await context.sendActivity(Utils.getRandomLoadingMessage()); // Should be displayed without waiting for the handleMessageWithLoadingIndicator to finish first
-          //await context.sendActivities([{ type: 'typing' }]);
-
-          await context.sendActivities([{ type: 'typing' }]);
-
-          // SSO login — wrapped in try/catch so a login failure sends a
-          // user-friendly message rather than crashing the handler.
+          // Authenticate with TotalAgility via SSO.
           try {
-            ssoKey = await TotalAgilityAgent.taSSOLogin(context); // Get the SSO Key from TotalAgility each time, as this API will return an existing session as opposed to creating new ones each time.
+            ssoKey = await TotalAgilityAgent.taSSOLogin(context);
           } catch (ssoErr) {
             console.error("[TeamsBot] SSO login failed:", ssoErr.message);
             await context.sendActivity(
@@ -59,32 +174,8 @@ class TeamsBot extends TeamsActivityHandler {
             return;
           }
 
-          /*
-          // Try to get the SSO key from state
-          ssoKey = await this.ssoKeyAccessor.get(context);
-    
-          // TODO add logic to handle expired SSO keys
-          // Check for a 403 (but remember to avoid an infinite loop as not all 403s will be due to expired tokens)?
-          // Or use the validate session API?
-          // Or simply refresh the SSO key on each message?
-          // Waiting for guidance from TotalAgility team...
-    
-          if (!ssoKey) {
-            await context.sendActivity(`Signing into TotalAgility...`);
-            await context.sendActivities([{ type: 'typing' }]);
-            // If not present, call your async function to get it
-            ssoKey = await TotalAgilityAgent.taSSOLogin(context); // Get the SSO Key from TotalAgility
-        
-            // Store the SSO key in state for future use
-            await this.ssoKeyAccessor.set(context, ssoKey);
-            await context.sendActivity(`TotalAgility sign-in complete.`);
-            // Debug:
-            //await context.sendActivity(`TotalAgility sign-in complete... SSO Key: ${ssoKey}`);
-          }
-          */
-
-          await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed
-          await this.handleMessageWithLoadingIndicator(context, ssoKey); // Call the TA Agent / API
+          await context.sendActivities([{ type: "typing" }]);
+          await this.handleMessageWithLoadingIndicator(context, ssoKey);
           await next();
         }
       } catch (err) {
@@ -94,48 +185,53 @@ class TeamsBot extends TeamsActivityHandler {
             `⚠️ Sorry, something went wrong while processing your message.\n\nError: ${err.message}`
           );
         } catch (_) {
-          // If even the error message fails to send, just log it
-          console.error("[TeamsBot] Failed to send error message to user:", _.message);
+          console.error(
+            "[TeamsBot] Failed to send error message to user:",
+            _.message
+          );
         }
       }
     });
 
-
-    // Listen to MembersAdded event, view https://docs.microsoft.com/en-us/microsoftteams/platform/resources/bot-v3/bots-notifications for more events
+    // ── Members Added Handler ───────────────────────────────────────────
+    // Fires when users are added to a conversation (including bot installation).
+    // See: https://docs.microsoft.com/en-us/microsoftteams/platform/resources/bot-v3/bots-notifications
     this.onMembersAdded(async (context, next) => {
       const membersAdded = context.activity.membersAdded;
       for (let cnt = 0; cnt < membersAdded.length; cnt++) {
         if (membersAdded[cnt].id) {
-          // Capture conversation reference on install so we can send
-          // proactive notifications even before the user sends a message.
+          // Capture the conversation reference on install so proactive
+          // notifications work even before the user sends their first message.
           await this._saveConversationReference(context);
-
-          /* Uncomment to show an initial "welcome" message:
-          await context.sendActivity(
-            `Hi there! I'm TotalAgility, your Intelligent Automation Agent.`
-          );
-          */
           break;
         }
       }
       await next();
     });
 
-    // Also capture on conversationUpdate (e.g. bot added to a group chat)
+    // ── Conversation Update Handler ─────────────────────────────────────
+    // Fires on events such as the bot being added to a group chat.
     this.onConversationUpdate(async (context, next) => {
       await this._saveConversationReference(context);
       await next();
     });
   }
 
+  // ── Private Methods ───────────────────────────────────────────────────────
+
   /**
-   * Persist the conversation reference for the current user so that
-   * proactive messages can be sent later via the /api/notifications endpoint.
+   * Store the current user's `ConversationReference` in the conversation store
+   * so that proactive messages can be sent later via `/api/notifications`.
    *
-   * The key follows the same logic as the SSO login in taAgent.js:
-   *  - If TOTALAGILITY_USE_TEST_USER is "true", use TOTALAGILITY_TEST_USERNAME
-   *  - Otherwise, resolve the Teams user's email via TeamsInfo
-   *  - Fall back to the user's display name or ID
+   * **User key resolution** (matches the SSO logic in `taAgent.js`):
+   * 1. If `TOTALAGILITY_USE_TEST_USER` is `"true"` → uses `TOTALAGILITY_TEST_USERNAME`.
+   * 2. Otherwise → resolves the Teams user's email via `TeamsInfo.getMember()`
+   *    (cached in `emailCache` to avoid repeated HTTP calls).
+   * 3. Falls back to the user's display name or Bot Framework ID.
+   *
+   * @param {import("botbuilder").TurnContext} context - The current turn context.
+   * @returns {Promise<void>}
+   * @private
    */
   async _saveConversationReference(context) {
     try {
@@ -143,22 +239,28 @@ class TeamsBot extends TeamsActivityHandler {
       let userKey = null;
 
       if (config.totalAgilityUseTestUser === "true") {
-        // Test mode — use the configured test username
         userKey = config.totalAgilityTestUserName;
       } else {
-        // Production — resolve the Teams user's email
-        if (context.activity.from && context.activity.from.aadObjectId) {
-          try {
-            const { TeamsInfo } = require('botbuilder');
-            const member = await TeamsInfo.getMember(context, context.activity.from.id);
-            if (member && member.email) {
-              userKey = member.email;
+        const aadId =
+          context.activity.from && context.activity.from.aadObjectId;
+        if (aadId) {
+          if (emailCache.has(aadId)) {
+            userKey = emailCache.get(aadId);
+          } else {
+            try {
+              const member = await TeamsInfo.getMember(
+                context,
+                context.activity.from.id
+              );
+              if (member && member.email) {
+                userKey = member.email;
+                emailCache.set(aadId, userKey);
+              }
+            } catch (_) {
+              // TeamsInfo may not be available (e.g. during conversationUpdate).
             }
-          } catch (_) {
-            // Swallow — not always available (e.g. during conversationUpdate)
           }
         }
-        // Fall back to display name or ID
         if (!userKey && context.activity.from) {
           userKey = context.activity.from.name || context.activity.from.id;
         }
@@ -169,180 +271,143 @@ class TeamsBot extends TeamsActivityHandler {
         console.log("[TeamsBot] Saved conversation reference for:", userKey);
       }
     } catch (err) {
-      console.error("[TeamsBot] Error saving conversation reference:", err.message);
+      console.error(
+        "[TeamsBot] Error saving conversation reference:",
+        err.message
+      );
     }
   }
 
+  /**
+   * Process a user message: download any file attachments, call the
+   * TotalAgility Agent API, and return the response to the user.
+   *
+   * While waiting for the agent response, periodic "still working" messages
+   * are sent at the intervals defined in `PROGRESS_INTERVALS`.
+   *
+   * @param {import("botbuilder").TurnContext} context - The current turn context.
+   * @param {string} ssoKey - The TotalAgility SSO session key.
+   * @returns {Promise<void>}
+   */
   async handleMessageWithLoadingIndicator(context, ssoKey) {
-    await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed
+    await context.sendActivities([{ type: "typing" }]);
     console.log("Running with Message Activity.");
 
-
     try {
+      // ── Extract & normalise user text ───────────────────────────────
+      const removedMentionText = TurnContext.removeRecipientMention(
+        context.activity
+      );
+      const userRequest = removedMentionText
+        .toLowerCase()
+        .replace(/\n|\r/g, "")
+        .trim();
+      saveMsg("User", userRequest);
 
-      const removedMentionText = TurnContext.removeRecipientMention(context.activity);
-      const userRequest = removedMentionText.toLowerCase().replace(/\n|\r/g, "").trim();
-      saveMsg("User", userRequest); // Save a copy of the received message
-
-      // Init var to hold base64 string if a file is attached:
+      // ── File attachment handling ────────────────────────────────────
       let base64String = "";
       let mimeType = "";
       let fileName = "";
 
-      // Check for presence of a file: 
-      if (context.activity.attachments && context.activity.attachments.length > 0) {
-
-        // File handling code here - process each attachment:
+      if (
+        context.activity.attachments &&
+        context.activity.attachments.length > 0
+      ) {
         for (let i = 0; i < context.activity.attachments.length; i++) {
           const attachment = context.activity.attachments[i];
 
-          if (attachment.contentType === 'application/vnd.microsoft.teams.file.download.info') { // This indicates a file attachment
-
+          if (
+            attachment.contentType ===
+            "application/vnd.microsoft.teams.file.download.info"
+          ) {
             const downloadUrl = attachment.content.downloadUrl;
-            const contentUrl = attachment.contentUrl;
-            const contentType = attachment.contentType;
             fileName = attachment.name;
+            mimeType = getMimeType(attachment.content.fileType);
 
-            mimeType = getMimeType(attachment.content.fileType); // Get MIME type based on file extension
-
-            // Debug - inform user of received file:
-            //const fileMessage = `Received file: ${fileName} (Type: ${contentType}, URL: ${contentUrl})`;
-            //await context.sendActivity(fileMessage);
-            //saveMsg("TotalAgility Bot", fileMessage); // Save a copy of the reply message
-
-            // Update the user:
             await context.sendActivity(`Uploading file ${fileName}.`);
-            await context.sendActivities([{ type: 'typing' }]);
+            await context.sendActivities([{ type: "typing" }]);
 
-            // Download the file as a buffer
-            const response = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
-            const fileBuffer = Buffer.from(response.data);
+            // Download and convert to base64 for the TotalAgility API.
+            const response = await axios.get(downloadUrl, {
+              responseType: "arraybuffer",
+            });
+            base64String = Buffer.from(response.data).toString("base64");
 
-            // Convert file buffer contents to a base64 string, to send to TotalAgility:
-            base64String = fileBuffer.toString('base64');
-
-            // Debug:
-            //await context.sendActivity(`File ${fileName} received and converted to base64! Sending to Agent: ${config.totalAgilityAgentName} \n ${base64String.substring(0, 100)}...`); // Send first 100 characters only for brevity
             await context.sendActivity(`File ${fileName} received.`);
-            await context.sendActivities([{ type: 'typing' }]); // Show typing indicator while processing
-
-          } else {
-            // Skip non-file attachments and messages:
-            // await context.sendActivity(`Attachment ${i + 1} is not a file download info type.`);
+            await context.sendActivities([{ type: "typing" }]);
           }
         }
-
-        // Debug:
-        // await context.sendActivity(JSON.stringify(context)); // Debug - show the first attachment object
       } else {
-        // No file attached, proceed with normal message processing
-        await context.sendActivity(`No file attached. Processing your message...`);
+        await context.sendActivity(
+          "No file attached. Processing your message..."
+        );
       }
-      // End file handling code.
 
-      // Set up periodic "still processing" messages
-      let intervals = [15000, 22000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 110000, 120000, 130000, 140000, 150000, 160000, 170000, 180000, 190000, 200000]; // 5s, 10s, 15s, 20s...
+      // ── Progress timers ─────────────────────────────────────────────
       let timers = [];
       let isDone = false;
 
-      // Set up timers to send "still working" messages
-      intervals.forEach((delay, idx) => {
+      PROGRESS_INTERVALS.forEach((delay, idx) => {
         timers[idx] = setTimeout(async () => {
           if (!isDone) {
-            //await context.sendActivity(`${Utils.getRandomProgressMessage()}\n (${(delay / 1000)} seconds elapsed)`);
-            await context.sendActivity(`${Utils.getRandomProgressMessage()}`);
-            await context.sendActivities([{ type: 'typing' }]);
+            await context.sendActivity(Utils.getRandomProgressMessage());
+            await context.sendActivities([{ type: "typing" }]);
           }
         }, delay);
       });
 
-      // Send just the most recent prompt to TotalAgility: 
-      // let agentResponse = await TotalAgilityAgent.callRestService(userRequest);
+      // ── Call the TotalAgility Agent ─────────────────────────────────
+      const agentResponse = await TotalAgilityAgent.callRestService(
+        Utils.renderConversationHistoryMarkdown(messageArray),
+        base64String,
+        mimeType,
+        ssoKey,
+        fileName
+      );
+      await context.sendActivity(agentResponse);
 
-      // Send the whole conversation history to  the TA Agent / API.
-      let agentResponse = await TotalAgilityAgent.callRestService(Utils.renderConversationHistoryMarkdown(messageArray), base64String, mimeType, ssoKey, fileName); // Pass the base64 string if a file was attached
-      await context.sendActivity(agentResponse); // Send the response to the user
-
-      // Mark as done to stop further "still working" messages
+      // ── Cleanup ─────────────────────────────────────────────────────
       isDone = true;
-      // Clear all timers
-      timers.forEach(timer => clearTimeout(timer));
-
-      saveMsg("TotalAgility Bot", agentResponse); // Save a copy of the reply message
-
+      timers.forEach((timer) => clearTimeout(timer));
+      saveMsg("TotalAgility Bot", agentResponse);
     } catch (error) {
-      await context.sendActivity(`An error occurred: ${error.message}`);
+      await context.sendActivity(
+        `⚠️ An error occurred: ${error.message}`
+      );
     }
-    // Debug the contents of the message array by sending to the user:
-    // await context.sendActivity(`Current content of messageArray: \n\n` + Utils.renderConversationHistoryMarkdown(messageArray));
   }
 }
 
+// ── Module-Level Helper Functions ─────────────────────────────────────────────
 
+/**
+ * Append a message to the rolling conversation history.
+ * When the array exceeds `messageArrayMaxSize`, the oldest entry is removed.
+ *
+ * @param {string} actor   - The speaker label (e.g. "User", "TotalAgility Bot").
+ * @param {string} message - The message text.
+ */
 function saveMsg(actor, message) {
-  // Add the new element to the array
   messageArray.push({ speaker: actor, message: message });
-
-  // Check if the array exceeds the maximum size
   if (messageArray.length > messageArrayMaxSize) {
-    // Remove the oldest entry (first element)
     messageArray.shift();
   }
 }
 
-
+/**
+ * Map a file extension to its MIME type using the `MIME_TYPES` lookup table.
+ *
+ * @param {string} ext - File extension (with or without leading dot).
+ * @returns {string|null} The MIME type, or `null` if unrecognised.
+ *
+ * @example
+ * getMimeType('pdf');   // → 'application/pdf'
+ * getMimeType('.DOCX'); // → 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+ * getMimeType('xyz');   // → null
+ */
 function getMimeType(ext) {
-  // Remove leading dot if present and convert to lowercase
-  ext = ext.replace(/^\./, '').toLowerCase();
-
-  // TODO - align to list of supported types in TotalAgility & reject if unsupported (currently handled TA side)
-
-  // Common extension to MIME type mapping
-  const mimeTypes = {
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'gif': 'image/gif',
-    'bmp': 'image/bmp',
-    'webp': 'image/webp',
-    'svg': 'image/svg+xml',
-    'ico': 'image/x-icon',
-    'tiff': 'image/tiff',
-    'pdf': 'application/pdf',
-    'txt': 'text/plain',
-    'html': 'text/html',
-    'htm': 'text/html',
-    'css': 'text/css',
-    'tif': 'image/tiff',
-    'tiff': 'image/tiff',
-    'js': 'application/javascript',
-    'json': 'application/json',
-    'xml': 'application/xml',
-    'csv': 'text/csv',
-    'zip': 'application/zip',
-    'rar': 'application/vnd.rar',
-    'tar': 'application/x-tar',
-    'gz': 'application/gzip',
-    'mp3': 'audio/mpeg',
-    'wav': 'audio/wav',
-    'ogg': 'audio/ogg',
-    'mp4': 'video/mp4',
-    'avi': 'video/x-msvideo',
-    'mov': 'video/quicktime',
-    'wmv': 'video/x-ms-wmv',
-    'flv': 'video/x-flv',
-    'mkv': 'video/x-matroska',
-    'doc': 'application/msword',
-    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'xls': 'application/vnd.ms-excel',
-    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'ppt': 'application/vnd.ms-powerpoint',
-    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    // Add more as needed
-  };
-
-  return mimeTypes[ext] || null;
+  ext = ext.replace(/^\./, "").toLowerCase();
+  return MIME_TYPES[ext] || null;
 }
-
 
 module.exports.TeamsBot = TeamsBot;

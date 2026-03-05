@@ -29,7 +29,7 @@ Project structure and where to make edits
 	- `src/config.js` — configuration loader and environment handling
 	- `src/taAgent.js` — main TotalAgility API integration and the primary place to change how the app calls your Agent (seed usage, request shape, headers, error handling)
 	- `src/teamsBot.js` — Teams/Microsoft Bot framework adapter and conversation turn handling
-	- `src/taAgent.js` — primary API wrapper for calling TotalAgility (modify this to change request/response handling)
+	- `src/conversationStore.js` — Azure Table Storage–backed persistence for conversation references (proactive messaging)
 	- `src/utils.js` — helper functions including loading/typing feedback messages (customize UI text here)
 - env/: environment template files — update these to match your tenant, keys and Agent details
 - infra/: infrastructure deployment scripts (Azure Bicep templates used for provisioning, if desired)
@@ -55,6 +55,14 @@ CONVERSATION_HISTORY_MAX_ENTRIES=
 NOTIFICATIONS_BEARER_TOKEN=
 AZURE_STORAGE_CONNECTION_STRING=
 ```
+
+> **Security note — `SECRET_` prefix convention:**
+> Teams Toolkit automatically masks variables whose names start with `SECRET_` in
+> build and deploy logs.  Sensitive values (API keys, tokens, connection strings)
+> should use `SECRET_` prefixed variable names in `env/.env.*.user` files
+> (e.g. `SECRET_TOTALAGILITY_API_KEY`, `SECRET_NOTIFICATIONS_BEARER_TOKEN`,
+> `SECRET_AZURE_STORAGE_CONNECTION_STRING`).  The YAML files map these to the
+> non-prefixed names the application code expects.
 
 Notes on these values
 - `TOTALAGILITY_ENDPOINT` — base TotalAgility REST/OpenAPI endpoint, e.g. `https://{{your_tenant}}.dev.kofaxcloud.com/services/sdk/v1`
@@ -83,12 +91,6 @@ Version notes
 ### Version 1.1
 - Added the ability to upload files and send these to the TotalAgility Agent for processing. This sample uses TotalAgility 25.2 where the Agent interface accepts TotalAgility Documents (sent as base64 strings) to the Jobs sync API.
 
-### Version 1.3
-- Added **proactive notification endpoint** (`POST /api/notifications`) that allows 3rd-party systems (e.g. TotalAgility workflows, Power Automate, external APIs) to push messages into a specific user's Teams session.
-- Added **conversation listing endpoint** (`GET /api/conversations`) to discover which users have active conversation references.
-- Conversation references are persisted to **Azure Table Storage** for durability across restarts (falls back to in-memory when `AZURE_STORAGE_CONNECTION_STRING` is not set).
-- Both endpoints are protected by bearer-token authentication via `NOTIFICATIONS_BEARER_TOKEN`.
-
 ### Version 1.2
 - Added settings to SSO a user into TotalAgility based on their email address from their Teams login.
 
@@ -100,6 +102,17 @@ Environment variables for SSO testing:
 TOTALAGILITY_TEST_USERNAME=my_ta_test_account@test.com
 TOTALAGILITY_USE_TEST_USER=true
 ```
+
+### Version 1.3
+- Added **proactive notification endpoint** (`POST /api/notifications`) that allows 3rd-party systems (e.g. TotalAgility workflows, Power Automate, external APIs) to push messages into a specific user's Teams session.
+- Added **conversation listing endpoint** (`GET /api/conversations`) to discover which users have active conversation references.
+- Conversation references are persisted to **Azure Table Storage** for durability across restarts (falls back to in-memory when `AZURE_STORAGE_CONNECTION_STRING` is not set).
+- Both endpoints are protected by bearer-token authentication via `NOTIFICATIONS_BEARER_TOKEN`.
+
+### Version 1.4
+- **Security hardening:** added `helmet` for HTTP security headers, `express-rate-limit` on notification endpoints, startup config validation, request body size limits.
+- **Secret management:** sensitive env vars now use the `SECRET_` prefix convention so Teams Toolkit masks them in logs.
+- Fixed `.gitignore` to prevent `.localConfigs` (which contains runtime secrets) from being committed.
 
 ### Running and developing locally
 - Install dependencies:
@@ -125,7 +138,6 @@ npm run dev:teamsfx:testtool  # start using the Test Tool flow
 - For Teams-specific behaviour or message formatting, update `src/teamsBot.js` and `src/index.js`.
 - Keep environment-specific secrets out of source control. Use the `env/` templates and local environment variables when running locally.
 
-<<<<<<< HEAD
 ### Proactive Notifications API
 
 The bot exposes two HTTP endpoints that allow external / 3rd-party applications to send messages directly into a user's Teams chat with the bot. This follows the [official Microsoft proactive messaging pattern](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/conversations/send-proactive-messages).
@@ -156,7 +168,7 @@ Content-Type: application/json
 | Field | Type | Description |
 |-------|------|-------------|
 | `userKey` | string | The user's email address (or Teams display name) as registered when they last interacted with the bot. Case-insensitive. |
-| `message` | string | The message text to send to the user in their Teams chat. Supports Markdown. |
+| `message` | string | The message text to send to the user in their Teams chat. Supports Markdown. Max 4000 characters. |
 
 **Responses:**
 
@@ -166,6 +178,7 @@ Content-Type: application/json
 | `400`  | Missing `userKey` or `message` in request body. |
 | `401`  | Invalid or missing bearer token. |
 | `404`  | No conversation reference found for the given `userKey`. |
+| `429`  | Rate limit exceeded — try again later. |
 | `500`  | Internal server error. |
 | `503`  | `NOTIFICATIONS_BEARER_TOKEN` is not configured. |
 
@@ -273,10 +286,5 @@ Authorization: Bearer <NOTIFICATIONS_BEARER_TOKEN>
 3. When a 3rd-party app calls `POST /api/notifications`, the bot uses `adapter.continueConversationAsync()` with the stored reference to send the message into the user's existing personal chat with the bot.
 4. The user receives the notification as a new message from the bot in Teams — no user action required.
 
-=======
->>>>>>> 103246da6fca8b9cfcfaa5c89a709f9ba1a8c353
 ### Deployment and infra
 - The `infra/` folder contains Azure Bicep templates to help provision cloud resources if you want to deploy to Azure.
-
-
-

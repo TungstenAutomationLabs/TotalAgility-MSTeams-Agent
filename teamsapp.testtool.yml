@@ -17,15 +17,17 @@ deploy:
       args: install --no-audit
 
   # Generate runtime environment variables
+  # NOTE: SECRET_-prefixed env vars are masked in Teams Toolkit logs.
+  # The YAML maps SECRET_ vars → non-prefixed names the app code expects.
   - uses: file/createOrUpdateEnvironmentFile
     with:
       target: ./.localConfigs.testTool
       envs:
         TEAMSFX_NOTIFICATION_STORE_FILENAME: ${{TEAMSFX_NOTIFICATION_STORE_FILENAME}}
         TOTALAGILITY_ENDPOINT: ${{TOTALAGILITY_ENDPOINT}}
-        TOTALAGILITY_API_KEY: ${{TOTALAGILITY_API_KEY}}
+        TOTALAGILITY_API_KEY: ${{SECRET_TOTALAGILITY_API_KEY}}
         TOTALAGILITY_AGENT_NAME: ${{TOTALAGILITY_AGENT_NAME}}
-        TOTALAGILITY_AGENT_ID: ${{TOTALAGILITY_AGENT_ID}}
+        TOTALAGILITY_AGENT_ID: ${{SECRET_TOTALAGILITY_AGENT_ID}}
         TOTALAGILITY_TEST_USERNAME: ${{TOTALAGILITY_TEST_USERNAME}}
         TOTALAGILITY_USE_TEST_USER: ${{TOTALAGILITY_USE_TEST_USER}}
         # LLM tuning parameters (optional)
@@ -35,5 +37,5 @@ deploy:
         # Conversation history
         CONVERSATION_HISTORY_MAX_ENTRIES: ${{CONVERSATION_HISTORY_MAX_ENTRIES}}
         # Proactive notifications
-        NOTIFICATIONS_BEARER_TOKEN: ${{NOTIFICATIONS_BEARER_TOKEN}}
-        AZURE_STORAGE_CONNECTION_STRING: ${{AZURE_STORAGE_CONNECTION_STRING}}
+        NOTIFICATIONS_BEARER_TOKEN: ${{SECRET_NOTIFICATIONS_BEARER_TOKEN}}
+        AZURE_STORAGE_CONNECTION_STRING: ${{SECRET_AZURE_STORAGE_CONNECTION_STRING}}

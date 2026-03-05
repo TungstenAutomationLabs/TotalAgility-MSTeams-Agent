@@ -1,180 +1,368 @@
-// index.js is used to setup and configure your bot
+/**
+ * @file index.js
+ * @module index
+ * @description Application entry point for the TotalAgility Teams Bot.
+ *
+ * Bootstraps the Express HTTP server, configures the Bot Framework adapter,
+ * initialises the conversation reference store, and exposes the following
+ * endpoints:
+ *
+ * | Method | Path                | Purpose                                         |
+ * |--------|---------------------|-------------------------------------------------|
+ * | POST   | `/api/messages`     | Bot Framework messaging endpoint (Teams ↔ Bot)  |
+ * | POST   | `/api/notifications`| Proactive notification endpoint (3rd-party → user) |
+ * | GET    | `/api/conversations`| List registered conversation references           |
+ *
+ * @see {@link https://aka.ms/bot-services} Bot Framework overview
+ * @see {@link https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/conversations/send-proactive-messages} Proactive messaging guide
+ */
 
-// Import required packages
+// ── Dependencies ──────────────────────────────────────────────────────────────
 const express = require("express");
-
-// Import required bot services.
-// See https://aka.ms/bot-services to learn more about the different parts of a bot.
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const {
   CloudAdapter,
   ConfigurationServiceClientCredentialFactory,
   ConfigurationBotFrameworkAuthentication,
   UserState,
-  MemoryStorage
+  MemoryStorage,
 } = require("botbuilder");
 
 const { TeamsBot } = require("./teamsBot");
 const conversationStore = require("./conversationStore");
-
 const config = require("./config");
 
-// How state across messages, so only one SSO key is needed for TA.
-// const { UserState, MemoryStorage } = require("botbuilder");
+// ── Startup Config Validation ─────────────────────────────────────────────────
+/**
+ * Validate that critical configuration values are present at startup.
+ * Logs warnings for missing optional values and errors for missing required ones.
+ */
+(function validateConfig() {
+  const required = [
+    ["TOTALAGILITY_ENDPOINT", config.totalAgilityEndpoint],
+    ["TOTALAGILITY_API_KEY", config.totalAgilityApiKey],
+    ["TOTALAGILITY_AGENT_NAME", config.totalAgilityAgentName],
+    ["TOTALAGILITY_AGENT_ID", config.totalAgilityAgentId],
+  ];
 
-// Create adapter.
-// See https://aka.ms/about-bot-adapter to learn more about adapters.
+  const optional = [
+    ["BOT_ID", config.MicrosoftAppId],
+    ["NOTIFICATIONS_BEARER_TOKEN", config.notificationsBearerToken],
+    ["AZURE_STORAGE_CONNECTION_STRING", config.azureStorageConnectionString],
+  ];
+
+  let hasErrors = false;
+  for (const [name, value] of required) {
+    if (!value) {
+      console.error(`[Config] ❌ Missing required env var: ${name}`);
+      hasErrors = true;
+    }
+  }
+
+  for (const [name, value] of optional) {
+    if (!value) {
+      console.warn(`[Config] ⚠️  Missing optional env var: ${name}`);
+    }
+  }
+
+  if (hasErrors) {
+    console.error(
+      "[Config] One or more required environment variables are missing. " +
+        "The bot may not function correctly."
+    );
+  }
+})();
+
+// ── Bot Framework Adapter ─────────────────────────────────────────────────────
+// The adapter translates incoming HTTP requests into Bot Framework Activities
+// and routes them to the bot logic.
+// See: https://aka.ms/about-bot-adapter
+
 const credentialsFactory = new ConfigurationServiceClientCredentialFactory(config);
-
 const botFrameworkAuthentication = new ConfigurationBotFrameworkAuthentication(
   {},
   credentialsFactory
 );
-
-
 const adapter = new CloudAdapter(botFrameworkAuthentication);
 
-// Set up state management for SSO key storage:
+// ── User State (SSO key persistence) ─────────────────────────────────────────
+// MemoryStorage is used to persist user-scoped state (e.g. the TotalAgility
+// SSO session key) across conversation turns within the same process.
+// NOTE: MemoryStorage is not durable across restarts.  For production at
+// scale, consider Azure Blob Storage or Cosmos DB.
+
 const memoryStorage = new MemoryStorage();
 const userState = new UserState(memoryStorage);
-const ssoKeyAccessor = userState.createProperty('ssoKey');
+const ssoKeyAccessor = userState.createProperty("ssoKey");
 
+// ── Global Turn Error Handler ─────────────────────────────────────────────────
+/**
+ * Catch-all for unhandled errors during a bot turn.
+ * Logs the error and sends a user-friendly message (for message activities only).
+ *
+ * @param {import("botbuilder").TurnContext} context - The current turn context.
+ * @param {Error} error - The unhandled error.
+ */
 adapter.onTurnError = async (context, error) => {
-  // This check writes out errors to console log .vs. app insights.
-  // NOTE: In production environment, you should consider logging this to Azure
-  //       application insights. See https://aka.ms/bottelemetry for telemetry
-  //       configuration instructions.
   console.error(`\n [onTurnError] unhandled error: ${error}`);
 
-  // Only send error message for user messages, not for other message types so the bot doesn't spam a channel or chat.
+  // Only send error message for user messages — avoids spamming channels.
   if (context.activity.type === "message") {
-    // Send a message to the user
-    await context.sendActivity(`The bot encountered an unhandled error:\n ${error.message}`);
-    await context.sendActivity("To continue to run this bot, please fix the bot source code.");
+    await context.sendActivity(
+      `The bot encountered an unhandled error:\n ${error.message}`
+    );
+    await context.sendActivity(
+      "To continue to run this bot, please fix the bot source code."
+    );
   }
 };
 
-// Create the bot that will handle incoming messages.
-//const bot = new TeamsBot();
-// Create the bot that will handle incoming messages & maintain user state for SSO key: 
+// ── Bot Instance ──────────────────────────────────────────────────────────────
 const bot = new TeamsBot(userState, ssoKeyAccessor);
 
-// Create express application.
+// ── Express Application ───────────────────────────────────────────────────────
 const expressApp = express();
-expressApp.use(express.json());
 
-// Initialise the conversation reference store (Azure Table Storage or in-memory fallback).
-conversationStore.init().then(() => {
-  console.log("[index] Conversation store ready.");
-}).catch((err) => {
-  console.error("[index] Conversation store init error:", err.message);
+// ── Security Middleware ───────────────────────────────────────────────────────
+// Helmet sets various HTTP headers to help protect the app from well-known
+// web vulnerabilities (XSS, clickjacking, MIME sniffing, etc.).
+expressApp.use(helmet());
+
+// Limit JSON body size to 1 MB to prevent oversized payloads.
+expressApp.use(express.json({ limit: "1mb" }));
+
+/**
+ * Rate limiter for notification and conversation-listing endpoints.
+ * Allows 60 requests per minute per IP.  Adjust if your 3rd-party
+ * integration sends bursts of notifications.
+ */
+const notificationLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests — please try again later." },
 });
 
-const server = expressApp.listen(process.env.port || process.env.PORT || 3978, () => {
-  console.log(`\nBot Started, ${expressApp.name} listening to`, server.address());
-  //console.log("TotalAgility Endpoint: " + config.totalAgilityEndpoint);
-  //console.log("TotalAgility API Key: " + config.totalAgilityApiKey);
-  //console.log("TotalAgility Agent Name: " + config.totalAgilityAgentName);
-  //console.log("TotalAgility Agent ID: " + config.totalAgilityAgentId);
-});
+// Initialise the conversation reference store (Azure Table Storage or
+// in-memory fallback).  This is fire-and-forget at startup; failures are
+// logged but don't prevent the server from starting.
+conversationStore
+  .init()
+  .then(() => console.log("[index] Conversation store ready."))
+  .catch((err) =>
+    console.error("[index] Conversation store init error:", err.message)
+  );
 
-// Listen for incoming requests.
+// Start listening.
+const server = expressApp.listen(
+  process.env.port || process.env.PORT || 3978,
+  () => {
+    console.log(
+      `\nBot Started, ${expressApp.name} listening to`,
+      server.address()
+    );
+  }
+);
+
+// ── POST /api/messages ────────────────────────────────────────────────────────
+/**
+ * Main Bot Framework messaging endpoint.
+ * Receives activities from the Bot Framework Channel Service and forwards them
+ * to the bot's turn handler.
+ */
 expressApp.post("/api/messages", async (req, res) => {
   try {
     await adapter.process(req, res, async (context) => {
       await bot.run(context);
-      await userState.saveChanges(context); // Save any state changes.
+      await userState.saveChanges(context);
     });
   } catch (err) {
     console.error("[/api/messages] Unhandled error:", err);
-    // If headers haven't been sent yet, return 500
     if (!res.headersSent) {
       res.status(500).json({ error: "Internal server error processing message." });
     }
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Middleware: Bearer-token authentication for notification endpoints
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Bearer-Token Auth Middleware ──────────────────────────────────────────────
+/**
+ * Express middleware that validates the `Authorization: Bearer <token>` header
+ * against the configured `NOTIFICATIONS_BEARER_TOKEN`.
+ *
+ * Applied to the `/api/notifications` and `/api/conversations` endpoints to
+ * prevent unauthorised access from external callers.
+ *
+ * Uses timing-safe comparison to prevent timing attacks on the bearer token.
+ *
+ * @param {import("express").Request}  req  - Express request object.
+ * @param {import("express").Response} res  - Express response object.
+ * @param {import("express").NextFunction} next - Express next middleware.
+ */
 function requireNotificationAuth(req, res, next) {
   const expectedToken = config.notificationsBearerToken;
   if (!expectedToken) {
     return res.status(503).json({
-      error: "Notification endpoint is disabled — NOTIFICATIONS_BEARER_TOKEN is not configured.",
+      error:
+        "Notification endpoint is disabled — NOTIFICATIONS_BEARER_TOKEN is not configured.",
     });
   }
 
   const authHeader = req.headers.authorization || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : authHeader;
 
-  if (!token || token !== expectedToken) {
-    return res.status(401).json({ error: "Unauthorized — invalid or missing bearer token." });
+  if (!token || !timingSafeEqual(token, expectedToken)) {
+    return res
+      .status(401)
+      .json({ error: "Unauthorized — invalid or missing bearer token." });
   }
 
   next();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  POST /api/notifications  — send a proactive message to a named user
-// ─────────────────────────────────────────────────────────────────────────────
-//
-//  Request body (JSON):
-//  {
-//    "userKey":  "jane.doe@contoso.com",   // email or name used during registration
-//    "message":  "Your document has been processed."
-//  }
-//
-//  The user must have previously interacted with the bot (or had the bot
-//  installed) so that a ConversationReference exists in the store.
-//
-expressApp.post("/api/notifications", requireNotificationAuth, async (req, res) => {
+/**
+ * Constant-time string comparison to prevent timing attacks.
+ * Falls back to simple equality if `crypto.timingSafeEqual` is unavailable.
+ *
+ * @param {string} a - First string.
+ * @param {string} b - Second string.
+ * @returns {boolean} Whether the strings are equal.
+ * @private
+ */
+function timingSafeEqual(a, b) {
   try {
-    const { userKey, message } = req.body || {};
-
-    if (!userKey || !message) {
-      return res.status(400).json({
-        error: "Request body must include 'userKey' (string) and 'message' (string).",
-      });
+    const crypto = require("crypto");
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    // If lengths differ, still perform comparison on equal-length buffers
+    // to avoid leaking length information.
+    if (bufA.length !== bufB.length) {
+      crypto.timingSafeEqual(bufA, bufA); // constant-time no-op
+      return false;
     }
+    return crypto.timingSafeEqual(bufA, bufB);
+  } catch {
+    return a === b;
+  }
+}
 
-    const ref = await conversationStore.get(userKey);
-    if (!ref) {
-      return res.status(404).json({
-        error: `No conversation reference found for user '${userKey}'. ` +
-               "The user must message the bot at least once before they can receive notifications.",
-      });
-    }
+/** Maximum allowed length for a notification message (in characters). */
+const MAX_NOTIFICATION_MESSAGE_LENGTH = 4000;
 
-    // Send the proactive message using the stored ConversationReference.
-    await adapter.continueConversationAsync(
-      config.MicrosoftAppId,
-      ref,
-      async (turnContext) => {
-        await turnContext.sendActivity(message);
+// ── POST /api/notifications ──────────────────────────────────────────────────
+/**
+ * Proactive notification endpoint.
+ *
+ * Allows 3rd-party systems (e.g. TotalAgility workflows, Power Automate,
+ * external APIs) to send a message directly into a user's Teams chat with the
+ * bot.  Uses the Microsoft-recommended `adapter.continueConversationAsync()`
+ * pattern with a stored `ConversationReference`.
+ *
+ * @route POST /api/notifications
+ *
+ * @example Request body:
+ * {
+ *   "userKey": "jane.doe@contoso.com",
+ *   "message": "Your document has been processed."
+ * }
+ *
+ * @example Success response (200):
+ * { "status": "ok", "userKey": "jane.doe@contoso.com", "message": "..." }
+ *
+ * @example Error response (404):
+ * { "error": "No conversation reference found for user 'jane.doe@contoso.com'..." }
+ */
+expressApp.post(
+  "/api/notifications",
+  notificationLimiter,
+  requireNotificationAuth,
+  async (req, res) => {
+    try {
+      const { userKey, message } = req.body || {};
+
+      if (!userKey || !message) {
+        return res.status(400).json({
+          error:
+            "Request body must include 'userKey' (string) and 'message' (string).",
+        });
       }
-    );
 
-    return res.status(200).json({ status: "ok", userKey, message });
-  } catch (err) {
-    console.error("[/api/notifications] Error:", err);
-    return res.status(500).json({ error: err.message });
+      if (typeof userKey !== "string" || typeof message !== "string") {
+        return res.status(400).json({
+          error: "'userKey' and 'message' must be strings.",
+        });
+      }
+
+      if (message.length > MAX_NOTIFICATION_MESSAGE_LENGTH) {
+        return res.status(400).json({
+          error: `'message' must not exceed ${MAX_NOTIFICATION_MESSAGE_LENGTH} characters (received ${message.length}).`,
+        });
+      }
+
+      const ref = await conversationStore.get(userKey);
+      if (!ref) {
+        return res.status(404).json({
+          error:
+            `No conversation reference found for user '${userKey}'. ` +
+            "The user must message the bot at least once before they can receive notifications.",
+        });
+      }
+
+      // Resume the conversation and deliver the proactive message.
+      await adapter.continueConversationAsync(
+        config.MicrosoftAppId,
+        ref,
+        async (turnContext) => {
+          await turnContext.sendActivity(message);
+        }
+      );
+
+      return res.status(200).json({ status: "ok", userKey, message });
+    } catch (err) {
+      console.error("[/api/notifications] Error:", err);
+      return res.status(500).json({ error: err.message });
+    }
   }
-});
+);
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  GET /api/conversations  — list all registered user keys (diagnostic)
-// ─────────────────────────────────────────────────────────────────────────────
-expressApp.get("/api/conversations", requireNotificationAuth, async (_req, res) => {
-  try {
-    const all = await conversationStore.listAll();
-    return res.status(200).json({ count: all.length, conversations: all });
-  } catch (err) {
-    console.error("[/api/conversations] Error:", err);
-    return res.status(500).json({ error: err.message });
+// ── GET /api/conversations ───────────────────────────────────────────────────
+/**
+ * Diagnostic endpoint that lists all users with stored conversation references.
+ * Useful for discovering valid `userKey` values for the notifications endpoint.
+ *
+ * @route GET /api/conversations
+ *
+ * @example Success response (200):
+ * {
+ *   "count": 2,
+ *   "conversations": [
+ *     { "userKey": "jane.doe@contoso.com", "conversationId": "...", "userName": "Jane Doe" }
+ *   ]
+ * }
+ */
+expressApp.get(
+  "/api/conversations",
+  notificationLimiter,
+  requireNotificationAuth,
+  async (_req, res) => {
+    try {
+      const all = await conversationStore.listAll();
+      return res.status(200).json({ count: all.length, conversations: all });
+    } catch (err) {
+      console.error("[/api/conversations] Error:", err);
+      return res.status(500).json({ error: err.message });
+    }
   }
-});
+);
 
-// Global error handler for Express — catches any unhandled errors in routes
+// ── Global Express Error Handler ─────────────────────────────────────────────
+/**
+ * Catch-all error handler for Express routes.
+ * Prevents unhandled errors from crashing the process.
+ */
 expressApp.use((err, _req, res, _next) => {
   console.error("[Express] Unhandled error:", err);
   if (!res.headersSent) {
@@ -182,17 +370,19 @@ expressApp.use((err, _req, res, _next) => {
   }
 });
 
-// Gracefully shutdown HTTP server
-["exit", "uncaughtException", "SIGINT", "SIGTERM", "SIGUSR1", "SIGUSR2"].forEach((event) => {
-  process.on(event, (reason) => {
-    if (reason) {
-      console.error(`[Process] ${event}:`, reason);
-    }
-    server.close();
-  });
-});
+// ── Graceful Shutdown ─────────────────────────────────────────────────────────
+["exit", "uncaughtException", "SIGINT", "SIGTERM", "SIGUSR1", "SIGUSR2"].forEach(
+  (event) => {
+    process.on(event, (reason) => {
+      if (reason) {
+        console.error(`[Process] ${event}:`, reason);
+      }
+      server.close();
+    });
+  }
+);
 
-// Catch unhandled promise rejections to prevent silent crashes
-process.on("unhandledRejection", (reason, promise) => {
+// Prevent silent failures from unhandled promise rejections.
+process.on("unhandledRejection", (reason, _promise) => {
   console.error("[Process] Unhandled promise rejection:", reason);
 });

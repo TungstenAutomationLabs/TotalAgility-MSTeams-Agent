@@ -15,15 +15,14 @@
       "value": "${{TOTALAGILITY_ENDPOINT}}"
     },
     "totalAgilityApiKey": {
-      "value": "${{TOTALAGILITY_API_KEY}}"
+      "value": "${{SECRET_TOTALAGILITY_API_KEY}}"
     },
     "totalAgilityAgentName": {
       "value": "${{TOTALAGILITY_AGENT_NAME}}"
     },
     "totalAgilityAgentId": {
-      "value": "${{TOTALAGILITY_AGENT_ID}}"
-    }
-    ,
+      "value": "${{SECRET_TOTALAGILITY_AGENT_ID}}"
+    },
     "totalAgilityTestUserName": {
       "value": "${{TOTALAGILITY_TEST_USERNAME}}"
     },
@@ -43,7 +42,7 @@
       "value": "${{CONVERSATION_HISTORY_MAX_ENTRIES}}"
     },
     "notificationsBearerToken": {
-      "value": "${{NOTIFICATIONS_BEARER_TOKEN}}"
+      "value": "${{SECRET_NOTIFICATIONS_BEARER_TOKEN}}"
     }
   }
 }

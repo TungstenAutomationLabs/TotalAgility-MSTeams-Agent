@@ -23,7 +23,9 @@
     "dependencies": {
         "@azure/data-tables": "^13.3.2",
         "botbuilder": "^4.23.1",
-        "express": "^5.0.1"
+        "express": "^5.0.1",
+        "express-rate-limit": "^8.3.0",
+        "helmet": "^8.1.0"
     },
     "devDependencies": {
         "env-cmd": "^10.1.0",
