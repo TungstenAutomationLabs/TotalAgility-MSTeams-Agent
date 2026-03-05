@@ -79,10 +79,18 @@ const server = expressApp.listen(process.env.port || process.env.PORT || 3978, (
 
 // Listen for incoming requests.
 expressApp.post("/api/messages", async (req, res) => {
-  await adapter.process(req, res, async (context) => {
-    await bot.run(context);
-    await userState.saveChanges(context); // Save any state changes.
-  });
+  try {
+    await adapter.process(req, res, async (context) => {
+      await bot.run(context);
+      await userState.saveChanges(context); // Save any state changes.
+    });
+  } catch (err) {
+    console.error("[/api/messages] Unhandled error:", err);
+    // If headers haven't been sent yet, return 500
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Internal server error processing message." });
+    }
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,9 +174,25 @@ expressApp.get("/api/conversations", requireNotificationAuth, async (_req, res) 
   }
 });
 
+// Global error handler for Express — catches any unhandled errors in routes
+expressApp.use((err, _req, res, _next) => {
+  console.error("[Express] Unhandled error:", err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: "An unexpected error occurred." });
+  }
+});
+
 // Gracefully shutdown HTTP server
 ["exit", "uncaughtException", "SIGINT", "SIGTERM", "SIGUSR1", "SIGUSR2"].forEach((event) => {
-  process.on(event, () => {
+  process.on(event, (reason) => {
+    if (reason) {
+      console.error(`[Process] ${event}:`, reason);
+    }
     server.close();
   });
+});
+
+// Catch unhandled promise rejections to prevent silent crashes
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[Process] Unhandled promise rejection:", reason);
 });

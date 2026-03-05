@@ -8,7 +8,11 @@
 /*       bots/how-to/conversations/send-proactive-messages              */
 /*************************************************************************/
 
-const { TableClient, AzureNamedKeyCredential } = require("@azure/data-tables");
+// NOTE: @azure/data-tables is loaded lazily inside init() so that the app
+// can start even if the package has issues or AZURE_STORAGE_CONNECTION_STRING
+// is not configured.  This avoids a crash on Azure App Service when the
+// SDK's transitive dependencies are incompatible with the host Node version.
+
 const config = require("./config");
 
 const TABLE_NAME = "ConversationReferences";
@@ -37,6 +41,10 @@ async function init() {
   }
 
   try {
+    // Lazy-load the Azure SDK so the app can start even if the package
+    // is missing or has compatibility issues.
+    const { TableClient } = require("@azure/data-tables");
+
     tableClient = TableClient.fromConnectionString(connStr, TABLE_NAME, {
       allowInsecureConnection: connStr.includes("UseDevelopmentStorage=true"),
     });
@@ -119,14 +127,19 @@ async function get(userKey) {
  */
 async function listUsers() {
   if (useTable && tableClient) {
-    const users = [];
-    const entities = tableClient.listEntities({
-      queryOptions: { select: ["userKey"] },
-    });
-    for await (const entity of entities) {
-      users.push(entity.userKey);
+    try {
+      const users = [];
+      const entities = tableClient.listEntities({
+        queryOptions: { select: ["userKey"] },
+      });
+      for await (const entity of entities) {
+        users.push(entity.userKey);
+      }
+      return users;
+    } catch (err) {
+      console.error("[ConversationStore] listUsers table query failed:", err.message);
+      // Fall through to memory store
     }
-    return users;
   }
 
   return Array.from(memoryStore.keys());
@@ -139,17 +152,22 @@ async function listUsers() {
  */
 async function listAll() {
   if (useTable && tableClient) {
-    const result = [];
-    const entities = tableClient.listEntities();
-    for await (const entity of entities) {
-      const ref = JSON.parse(entity.referenceJson);
-      result.push({
-        userKey: entity.userKey,
-        conversationId: ref.conversation ? ref.conversation.id : null,
-        userName: ref.user ? ref.user.name : null,
-      });
+    try {
+      const result = [];
+      const entities = tableClient.listEntities();
+      for await (const entity of entities) {
+        const ref = JSON.parse(entity.referenceJson);
+        result.push({
+          userKey: entity.userKey,
+          conversationId: ref.conversation ? ref.conversation.id : null,
+          userName: ref.user ? ref.user.name : null,
+        });
+      }
+      return result;
+    } catch (err) {
+      console.error("[ConversationStore] listAll table query failed:", err.message);
+      // Fall through to memory store
     }
-    return result;
   }
 
   const result = [];

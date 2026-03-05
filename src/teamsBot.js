@@ -25,55 +25,78 @@ class TeamsBot extends TeamsActivityHandler {
     this.ssoKeyAccessor = ssoKeyAccessor;
 
     this.onMessage(async (context, next) => {
+      try {
+        // Capture the conversation reference for proactive messaging.
+        // This stores/updates the reference every time the user sends a message
+        // so that external systems can send notifications to this user later.
+        await this._saveConversationReference(context);
 
-      // Capture the conversation reference for proactive messaging.
-      // This stores/updates the reference every time the user sends a message
-      // so that external systems can send notifications to this user later.
-      await this._saveConversationReference(context);
+        // Guard against null/undefined text (e.g. attachment-only messages)
+        const messageText = (context.activity.text || "").toLowerCase().replace(/\n|\r/g, "").trim();
 
-
-      if (context.activity.text.toLowerCase().match(/^(clear conversation history|clear history|clear|reset|clear conversation)$/)) {
-        // Debug:
-        await context.sendActivity("Current conversation history: " + Utils.renderConversationHistoryMarkdown(messageArray));
-        // Clear the conversation history:
-        messageArray = [];
-        await context.sendActivity("Conversation history reset.");
-      } else {
-
-        await context.sendActivity(Utils.getRandomLoadingMessage()); // Should be displayed without waiting for the handleMessageWithLoadingIndicator to finish first
-        //await context.sendActivities([{ type: 'typing' }]);
-
-        await context.sendActivities([{ type: 'typing' }]);
-        // For now: 
-        ssoKey = await TotalAgilityAgent.taSSOLogin(context); // Get the SSO Key from TotalAgility each time, as this API will return an existing session as opposed to creating new ones each time.
-
-        /* 
-        // Try to get the SSO key from state
-        ssoKey = await this.ssoKeyAccessor.get(context);
-  
-        // TODO add logic to handle expired SSO keys
-        // Check for a 403 (but remember to avoid an infinite loop as not all 403s will be due to expired tokens)?
-        // Or use the validate session API? 
-        // Or simply refresh the SSO key on each message? 
-        // Waiting for guidance from TotalAgility team...
-  
-        if (!ssoKey) {
-          await context.sendActivity(`Signing into TotalAgility...`);
-          await context.sendActivities([{ type: 'typing' }]);
-          // If not present, call your async function to get it
-          ssoKey = await TotalAgilityAgent.taSSOLogin(context); // Get the SSO Key from TotalAgility
-      
-          // Store the SSO key in state for future use
-          await this.ssoKeyAccessor.set(context, ssoKey);
-          await context.sendActivity(`TotalAgility sign-in complete.`);
+        if (messageText.match(/^(clear conversation history|clear history|clear|reset|clear conversation)$/)) {
           // Debug:
-          //await context.sendActivity(`TotalAgility sign-in complete... SSO Key: ${ssoKey}`);
-        }
-        */
+          await context.sendActivity("Current conversation history: " + Utils.renderConversationHistoryMarkdown(messageArray));
+          // Clear the conversation history:
+          messageArray = [];
+          await context.sendActivity("Conversation history reset.");
+        } else {
 
-        await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed  
-        await this.handleMessageWithLoadingIndicator(context, ssoKey); // Call the TA Agent / API
-        await next();
+          await context.sendActivity(Utils.getRandomLoadingMessage()); // Should be displayed without waiting for the handleMessageWithLoadingIndicator to finish first
+          //await context.sendActivities([{ type: 'typing' }]);
+
+          await context.sendActivities([{ type: 'typing' }]);
+
+          // SSO login — wrapped in try/catch so a login failure sends a
+          // user-friendly message rather than crashing the handler.
+          try {
+            ssoKey = await TotalAgilityAgent.taSSOLogin(context); // Get the SSO Key from TotalAgility each time, as this API will return an existing session as opposed to creating new ones each time.
+          } catch (ssoErr) {
+            console.error("[TeamsBot] SSO login failed:", ssoErr.message);
+            await context.sendActivity(
+              `⚠️ Unable to sign into TotalAgility. Please try again in a moment.\n\nError: ${ssoErr.message}`
+            );
+            return;
+          }
+
+          /*
+          // Try to get the SSO key from state
+          ssoKey = await this.ssoKeyAccessor.get(context);
+    
+          // TODO add logic to handle expired SSO keys
+          // Check for a 403 (but remember to avoid an infinite loop as not all 403s will be due to expired tokens)?
+          // Or use the validate session API?
+          // Or simply refresh the SSO key on each message?
+          // Waiting for guidance from TotalAgility team...
+    
+          if (!ssoKey) {
+            await context.sendActivity(`Signing into TotalAgility...`);
+            await context.sendActivities([{ type: 'typing' }]);
+            // If not present, call your async function to get it
+            ssoKey = await TotalAgilityAgent.taSSOLogin(context); // Get the SSO Key from TotalAgility
+        
+            // Store the SSO key in state for future use
+            await this.ssoKeyAccessor.set(context, ssoKey);
+            await context.sendActivity(`TotalAgility sign-in complete.`);
+            // Debug:
+            //await context.sendActivity(`TotalAgility sign-in complete... SSO Key: ${ssoKey}`);
+          }
+          */
+
+          await context.sendActivities([{ type: 'typing' }]); // Display the "typing" animation. Including twice as this seem to ensure it is consistenly diplayed
+          await this.handleMessageWithLoadingIndicator(context, ssoKey); // Call the TA Agent / API
+          await next();
+        }
+      } catch (err) {
+        console.error("[TeamsBot] Unexpected error in onMessage:", err);
+        try {
+          await context.sendActivity(
+            `⚠️ Sorry, something went wrong while processing your message.\n\nError: ${err.message}`
+          );
+        } catch (_) {
+          // If even the error message fails to send, just log it
+          console.error("[TeamsBot] Failed to send error message to user:", _.message);
+        }
       }
     });
 
