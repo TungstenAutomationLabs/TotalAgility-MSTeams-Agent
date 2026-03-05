@@ -9,11 +9,12 @@ const {
   CloudAdapter,
   ConfigurationServiceClientCredentialFactory,
   ConfigurationBotFrameworkAuthentication,
-  UserState, 
+  UserState,
   MemoryStorage
 } = require("botbuilder");
 
 const { TeamsBot } = require("./teamsBot");
+const conversationStore = require("./conversationStore");
 
 const config = require("./config");
 
@@ -61,6 +62,13 @@ const bot = new TeamsBot(userState, ssoKeyAccessor);
 const expressApp = express();
 expressApp.use(express.json());
 
+// Initialise the conversation reference store (Azure Table Storage or in-memory fallback).
+conversationStore.init().then(() => {
+  console.log("[index] Conversation store ready.");
+}).catch((err) => {
+  console.error("[index] Conversation store init error:", err.message);
+});
+
 const server = expressApp.listen(process.env.port || process.env.PORT || 3978, () => {
   console.log(`\nBot Started, ${expressApp.name} listening to`, server.address());
   //console.log("TotalAgility Endpoint: " + config.totalAgilityEndpoint);
@@ -75,6 +83,87 @@ expressApp.post("/api/messages", async (req, res) => {
     await bot.run(context);
     await userState.saveChanges(context); // Save any state changes.
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Middleware: Bearer-token authentication for notification endpoints
+// ─────────────────────────────────────────────────────────────────────────────
+function requireNotificationAuth(req, res, next) {
+  const expectedToken = config.notificationsBearerToken;
+  if (!expectedToken) {
+    return res.status(503).json({
+      error: "Notification endpoint is disabled — NOTIFICATIONS_BEARER_TOKEN is not configured.",
+    });
+  }
+
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+
+  if (!token || token !== expectedToken) {
+    return res.status(401).json({ error: "Unauthorized — invalid or missing bearer token." });
+  }
+
+  next();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  POST /api/notifications  — send a proactive message to a named user
+// ─────────────────────────────────────────────────────────────────────────────
+//
+//  Request body (JSON):
+//  {
+//    "userKey":  "jane.doe@contoso.com",   // email or name used during registration
+//    "message":  "Your document has been processed."
+//  }
+//
+//  The user must have previously interacted with the bot (or had the bot
+//  installed) so that a ConversationReference exists in the store.
+//
+expressApp.post("/api/notifications", requireNotificationAuth, async (req, res) => {
+  try {
+    const { userKey, message } = req.body || {};
+
+    if (!userKey || !message) {
+      return res.status(400).json({
+        error: "Request body must include 'userKey' (string) and 'message' (string).",
+      });
+    }
+
+    const ref = await conversationStore.get(userKey);
+    if (!ref) {
+      return res.status(404).json({
+        error: `No conversation reference found for user '${userKey}'. ` +
+               "The user must message the bot at least once before they can receive notifications.",
+      });
+    }
+
+    // Send the proactive message using the stored ConversationReference.
+    await adapter.continueConversationAsync(
+      config.MicrosoftAppId,
+      ref,
+      async (turnContext) => {
+        await turnContext.sendActivity(message);
+      }
+    );
+
+    return res.status(200).json({ status: "ok", userKey, message });
+  } catch (err) {
+    console.error("[/api/notifications] Error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  GET /api/conversations  — list all registered user keys (diagnostic)
+// ─────────────────────────────────────────────────────────────────────────────
+expressApp.get("/api/conversations", requireNotificationAuth, async (_req, res) => {
+  try {
+    const all = await conversationStore.listAll();
+    return res.status(200).json({ count: all.length, conversations: all });
+  } catch (err) {
+    console.error("[/api/conversations] Error:", err);
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 // Gracefully shutdown HTTP server

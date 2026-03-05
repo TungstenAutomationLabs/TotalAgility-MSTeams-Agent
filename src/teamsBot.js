@@ -3,13 +3,14 @@ const { TeamsActivityHandler, TurnContext } = require("botbuilder");
 const TotalAgilityAgent = require('./taAgent.js');
 //const config = require("./config"); // Uncomment for some debug steps
 const Utils = require('./utils.js');
+const conversationStore = require('./conversationStore.js');
 
 // Utils for file handling:
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-let messageArray = []; // An array to hold the current chat history. 
+let messageArray = []; // An array to hold the current chat history.
 const messageArrayMaxSize = 10; // Max number of messages to retain in the chat history.
 let ssoKey = ""; // Variable to hold the SSO key
 
@@ -21,6 +22,12 @@ class TeamsBot extends TeamsActivityHandler {
     this.ssoKeyAccessor = ssoKeyAccessor;
 
     this.onMessage(async (context, next) => {
+
+      // Capture the conversation reference for proactive messaging.
+      // This stores/updates the reference every time the user sends a message
+      // so that external systems can send notifications to this user later.
+      await this._saveConversationReference(context);
+
 
       if (context.activity.text.toLowerCase().match(/^(clear conversation history|clear history|clear|reset|clear conversation)$/)) {
         // Debug:
@@ -73,6 +80,10 @@ class TeamsBot extends TeamsActivityHandler {
       const membersAdded = context.activity.membersAdded;
       for (let cnt = 0; cnt < membersAdded.length; cnt++) {
         if (membersAdded[cnt].id) {
+          // Capture conversation reference on install so we can send
+          // proactive notifications even before the user sends a message.
+          await this._saveConversationReference(context);
+
           /* Uncomment to show an initial "welcome" message:
           await context.sendActivity(
             `Hi there! I'm TotalAgility, your Intelligent Automation Agent.`
@@ -83,6 +94,48 @@ class TeamsBot extends TeamsActivityHandler {
       }
       await next();
     });
+
+    // Also capture on conversationUpdate (e.g. bot added to a group chat)
+    this.onConversationUpdate(async (context, next) => {
+      await this._saveConversationReference(context);
+      await next();
+    });
+  }
+
+  /**
+   * Persist the conversation reference for the current user so that
+   * proactive messages can be sent later via the /api/notifications endpoint.
+   *
+   * The key used is the user's email when available (from Teams member info),
+   * falling back to the user name from the activity.
+   */
+  async _saveConversationReference(context) {
+    try {
+      const ref = TurnContext.getConversationReference(context.activity);
+      // Determine user key — prefer email, fall back to name, then AAD object ID
+      let userKey = null;
+      if (context.activity.from && context.activity.from.aadObjectId) {
+        // Try to resolve email via TeamsInfo
+        try {
+          const { TeamsInfo } = require('botbuilder');
+          const member = await TeamsInfo.getMember(context, context.activity.from.id);
+          if (member && member.email) {
+            userKey = member.email;
+          }
+        } catch (_) {
+          // Swallow — not always available (e.g. during conversationUpdate)
+        }
+      }
+      if (!userKey && context.activity.from) {
+        userKey = context.activity.from.name || context.activity.from.id;
+      }
+      if (userKey) {
+        await conversationStore.save(userKey, ref);
+        console.log("[TeamsBot] Saved conversation reference for:", userKey);
+      }
+    } catch (err) {
+      console.error("[TeamsBot] Error saving conversation reference:", err.message);
+    }
   }
 
   async handleMessageWithLoadingIndicator(context, ssoKey) {

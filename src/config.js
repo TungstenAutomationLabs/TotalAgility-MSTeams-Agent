@@ -9,7 +9,16 @@ const config = {
   totalAgilityAgentId: process.env.TOTALAGILITY_AGENT_ID,
   totalAgilityTestUserName: process.env.TOTALAGILITY_TEST_USERNAME,
   totalAgilityUseTestUser: process.env.TOTALAGILITY_USE_TEST_USER,
+  // optional LLM parameters (strings). Defaults applied in code.
+  totalAgilityTemperature: process.env.TOTALAGILITY_TEMPERATURE,
+  totalAgilityUseSeed: process.env.TOTALAGILITY_USE_SEED,
+  totalAgilitySeed: process.env.TOTALAGILITY_SEED,
+  // Proactive notifications
   notificationsBearerToken: process.env.NOTIFICATIONS_BEARER_TOKEN,
+  // Azure Table Storage for persisting conversation references
+  // (used by the proactive notification endpoint).
+  // When absent the store falls back to in-memory.
+  azureStorageConnectionString: process.env.AZURE_STORAGE_CONNECTION_STRING,
 };
 
 module.exports = config;

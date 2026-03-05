@@ -29,6 +29,18 @@
     },
     "totalAgilityUseTestUser": {
       "value": "${{TOTALAGILITY_USE_TEST_USER}}"
+    },
+    "totalAgilityTemperature": {
+      "value": "${{TOTALAGILITY_TEMPERATURE}}"
+    },
+    "totalAgilityUseSeed": {
+      "value": "${{TOTALAGILITY_USE_SEED}}"
+    },
+    "totalAgilitySeed": {
+      "value": "${{TOTALAGILITY_SEED}}"
+    },
+    "notificationsBearerToken": {
+      "value": "${{NOTIFICATIONS_BEARER_TOKEN}}"
     }
   }
 }

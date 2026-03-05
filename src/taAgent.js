@@ -30,7 +30,9 @@ async function callRestService(prompt_text, base64String, mimeType, sessionKey, 
     console.log("Calling TotalAgility on " + config.totalAgilityEndpoint + "/jobs/sync");
     const url = config.totalAgilityEndpoint + "/jobs/sync";
 
-    // Note some hard coded values for the process ID, seed etc.
+    // Note: most values including temperature/seed/use_seed are now driven by
+    // environment variables (see config.js).  Defaults are applied in code when
+    // env settings are absent.
     // Note, removed previous syntax:    
     // ...(mimeType ? {
     // } : {}),
@@ -49,17 +51,32 @@ async function callRestService(prompt_text, base64String, mimeType, sessionKey, 
                     "Id": "INPUT_PROMPT",
                     "Value": "" + prompt_text + ""
                 },
+                // temperature, use_seed and seed were originally hard‑coded.  They
+                // can now be overridden via environment variables as defined in
+                // config.js.  Default values are used otherwise.
                 {
                     "Id": "TEMPERATURE",
-                    "Value": 1
+                    "Value": (() => {
+                        const t = parseFloat(config.totalAgilityTemperature);
+                        return isNaN(t) ? 1 : t;
+                    })()
                 },
                 {
                     "Id": "USE_SEED",
-                    "Value": true
+                    "Value": (() => {
+                        const u = config.totalAgilityUseSeed;
+                        if (typeof u === 'string') {
+                            return u.toLowerCase() === 'true';
+                        }
+                        return u === undefined ? true : !!u;
+                    })()
                 },
                 {
                     "Id": "SEED",
-                    "Value": 27535
+                    "Value": (() => {
+                        const s = parseInt(config.totalAgilitySeed, 10);
+                        return isNaN(s) ? 27535 : s;
+                    })()
                 },
                 {
                     "Id": "DOCUMENT_CONTENT",

@@ -51,6 +51,8 @@ TOTALAGILITY_AGENT_NAME=
 TOTALAGILITY_AGENT_ID=
 TOTALAGILITY_TEST_USERNAME=
 TOTALAGILITY_USE_TEST_USER=
+NOTIFICATIONS_BEARER_TOKEN=
+AZURE_STORAGE_CONNECTION_STRING=
 ```
 
 Notes on these values
@@ -59,6 +61,9 @@ Notes on these values
 - `TOTALAGILITY_AGENT_NAME` — the process name of the Agent in TotalAgility
 - `TOTALAGILITY_AGENT_ID` — the process ID (often visible in the TotalAgility Designer edit URL)
 - `TOTALAGILITY_TEST_USERNAME` & `TOTALAGILITY_USE_TEST_USER` — override SSO behaviour to force a test TA user (useful for development)
+
+- `NOTIFICATIONS_BEARER_TOKEN` — a secret token that 3rd-party callers must present as a `Bearer` token when calling the notification endpoints. **Required** to enable `/api/notifications` and `/api/conversations`.
+- `AZURE_STORAGE_CONNECTION_STRING` — connection string for an Azure Storage account used to persist conversation references in Azure Table Storage. When absent the app falls back to an in-memory store (references are lost on restart). For local development with Azurite use `UseDevelopmentStorage=true`.
 
 Behavior notes preserved from the original sample
 - The main API call is managed in `src/taAgent.js`. The sample uses a hard-coded "seed" for consistent responses; remove or change this if you want nondeterministic LLM outputs.
@@ -72,9 +77,15 @@ How the Intent Router pattern works (summary from original README)
 Example resources
 - Tutorial video: Creating a Basic AI Agent in TotalAgility — https://www.tungstendemocenter.com/items/creating-a-basic-ai-agent-in-totalagility
 
-Version notes (preserved)
+Version notes 
 ### Version 1.1
 - Added the ability to upload files and send these to the TotalAgility Agent for processing. This sample uses TotalAgility 25.2 where the Agent interface accepts TotalAgility Documents (sent as base64 strings) to the Jobs sync API.
+
+### Version 1.3
+- Added **proactive notification endpoint** (`POST /api/notifications`) that allows 3rd-party systems (e.g. TotalAgility workflows, Power Automate, external APIs) to push messages into a specific user's Teams session.
+- Added **conversation listing endpoint** (`GET /api/conversations`) to discover which users have active conversation references.
+- Conversation references are persisted to **Azure Table Storage** for durability across restarts (falls back to in-memory when `AZURE_STORAGE_CONNECTION_STRING` is not set).
+- Both endpoints are protected by bearer-token authentication via `NOTIFICATIONS_BEARER_TOKEN`.
 
 ### Version 1.2
 - Added settings to SSO a user into TotalAgility based on their email address from their Teams login.
@@ -88,7 +99,7 @@ TOTALAGILITY_TEST_USERNAME=my_ta_test_account@test.com
 TOTALAGILITY_USE_TEST_USER=true
 ```
 
-Running and developing locally
+### Running and developing locally
 - Install dependencies:
 
 ```bash
@@ -106,24 +117,161 @@ npm run dev:teamsfx        # start locally for Teams development
 npm run dev:teamsfx:testtool  # start using the Test Tool flow
 ```
 
-Editing tips
+### Editing tips
 - To change how the app calls TotalAgility (payload, headers, error handling), update `src/taAgent.js`.
 - To change user-visible loading/typing messages, update `src/utils.js`.
 - For Teams-specific behaviour or message formatting, update `src/teamsBot.js` and `src/index.js`.
 - Keep environment-specific secrets out of source control. Use the `env/` templates and local environment variables when running locally.
 
-Deployment and infra
+### Proactive Notifications API
+
+The bot exposes two HTTP endpoints that allow external / 3rd-party applications to send messages directly into a user's Teams chat with the bot. This follows the [official Microsoft proactive messaging pattern](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/conversations/send-proactive-messages).
+
+**Prerequisites:**
+1. Set the `NOTIFICATIONS_BEARER_TOKEN` environment variable to a strong secret.
+2. Set the `AZURE_STORAGE_CONNECTION_STRING` environment variable for persistent storage (optional but recommended for production).
+3. The target user must have interacted with the bot at least once (or had the bot installed) so that their conversation reference is stored.
+
+#### `POST /api/notifications`
+
+Send a proactive message to a specific user.
+
+**Headers:**
+```
+Authorization: Bearer <NOTIFICATIONS_BEARER_TOKEN>
+Content-Type: application/json
+```
+
+**Request body:**
+```json
+{
+  "userKey": "jane.doe@contoso.com",
+  "message": "Your document has been processed successfully."
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `userKey` | string | The user's email address (or Teams display name) as registered when they last interacted with the bot. Case-insensitive. |
+| `message` | string | The message text to send to the user in their Teams chat. Supports Markdown. |
+
+**Responses:**
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Message sent successfully. |
+| `400`  | Missing `userKey` or `message` in request body. |
+| `401`  | Invalid or missing bearer token. |
+| `404`  | No conversation reference found for the given `userKey`. |
+| `500`  | Internal server error. |
+| `503`  | `NOTIFICATIONS_BEARER_TOKEN` is not configured. |
+
+**Example (cURL):**
+```bash
+curl -X POST https://your-bot-host/api/notifications \
+  -H "Authorization: Bearer YOUR_SECRET_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"userKey": "jane.doe@contoso.com", "message": "Job 12345 is complete."}'
+```
+
+**Example (JavaScript / Node.js):**
+```javascript
+const response = await fetch("https://your-bot-host/api/notifications", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer YOUR_SECRET_TOKEN",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    userKey: "jane.doe@contoso.com",
+    message: "**Document processed** ✅\nYour invoice #12345 has been approved.",
+  }),
+});
+
+const result = await response.json();
+console.log(result); // { status: "ok", userKey: "jane.doe@contoso.com", message: "..." }
+```
+
+**Example (PowerShell):**
+```powershell
+$headers = @{
+    "Authorization" = "Bearer YOUR_SECRET_TOKEN"
+    "Content-Type"  = "application/json"
+}
+$body = @{
+    userKey = "jane.doe@contoso.com"
+    message = "Your TotalAgility job has completed successfully."
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "https://your-bot-host/api/notifications" `
+    -Method POST -Headers $headers -Body $body
+```
+
+**Example (Python):**
+```python
+import requests
+
+response = requests.post(
+    "https://your-bot-host/api/notifications",
+    headers={
+        "Authorization": "Bearer YOUR_SECRET_TOKEN",
+        "Content-Type": "application/json",
+    },
+    json={
+        "userKey": "jane.doe@contoso.com",
+        "message": "Your document has been classified and is ready for review.",
+    },
+)
+print(response.json())
+```
+
+**Example — calling from a TotalAgility process:**
+
+In a TotalAgility process, use a **REST Service** activity to call the notification endpoint. Configure:
+- **URL:** `https://your-bot-host/api/notifications`
+- **Method:** `POST`
+- **Headers:** `Authorization: Bearer YOUR_SECRET_TOKEN` and `Content-Type: application/json`
+- **Body:** Map process variables to produce `{"userKey": "<email>", "message": "<notification text>"}`
+
+This allows any TotalAgility workflow to push status updates directly into a user's Teams chat.
+
+#### `GET /api/conversations`
+
+List all users with stored conversation references (useful for diagnostics and discovering valid `userKey` values).
+
+**Headers:**
+```
+Authorization: Bearer <NOTIFICATIONS_BEARER_TOKEN>
+```
+
+**Response:**
+```json
+{
+  "count": 2,
+  "conversations": [
+    {
+      "userKey": "jane.doe@contoso.com",
+      "conversationId": "a]b]c...",
+      "userName": "Jane Doe"
+    },
+    {
+      "userKey": "john.smith@contoso.com",
+      "conversationId": "x]y]z...",
+      "userName": "John Smith"
+    }
+  ]
+}
+```
+
+#### How it works
+
+1. Every time a user sends a message to the bot (or the bot is installed for a user), a `ConversationReference` is captured and stored — keyed by the user's email address (resolved via Teams APIs) or their display name as a fallback.
+2. The conversation reference is persisted in Azure Table Storage (table: `ConversationReferences`) so it survives process restarts.
+3. When a 3rd-party app calls `POST /api/notifications`, the bot uses `adapter.continueConversationAsync()` with the stored reference to send the message into the user's existing personal chat with the bot.
+4. The user receives the notification as a new message from the bot in Teams — no user action required.
+
+### Deployment and infra
 - The `infra/` folder contains Azure Bicep templates to help provision cloud resources if you want to deploy to Azure.
 
-Further work / suggestions
-- Add structured logging and telemetry for production monitoring.
-- Implement secure secret retrieval (Key Vault) for `TOTALAGILITY_API_KEY` in deployed environments.
-- Expand the Intent Router registry into a managed configuration (DB or CMS) if you have many sub-agents.
 
-License and credits
-- See `LICENSE.md`.
-
-If you'd like, I can:
-- run the local dev task to verify the app starts, or
-- open `src/taAgent.js` and add inline comments that explain where to change request/response handling.
 
