@@ -90,6 +90,13 @@ Behaviour notes
 - Loading messages can be configured in `src/utils.js`.
 - Example prompts are available in `appPackage/manifest.json`.
 
+### Built-in chat commands
+
+| Command | Description |
+|---------|-------------|
+| `debug` | Prints all loaded configuration values to the Teams chat (and console log). Sensitive values (API keys, passwords, tokens, connection strings) are masked. Useful for verifying that the correct environment files are being loaded at runtime. |
+| `clear conversation history` | Displays the current conversation history, then resets it. Also accepts: `clear history`, `clear`, `reset`, `clear conversation`. |
+
 How the Intent Router pattern works
 - A controlling "Intent Router" Chat Agent evaluates incoming prompts using an LLM step and maps them to available actions / sub-agents. The router provides a registry of available Chat Agents (with ProcessIDs) and returns JSON mapped to the TotalAgility data model describing which sub-process to invoke and which prompt to send.
 - Because all Chat Agents expose a common interface, the registry can include many agents; the router chooses the best match and may iterate multiple steps (search KB, call external APIs, gather documents) before returning a final response.

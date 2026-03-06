@@ -40,6 +40,7 @@ const {
 const { TeamsBot } = require("./teamsBot");
 const conversationStore = require("./conversationStore");
 const config = require("./config");
+const Utils = require("./utils");
 
 // ── Startup Config Validation ─────────────────────────────────────────────────
 /**
@@ -80,6 +81,17 @@ const config = require("./config");
         "The bot may not function correctly."
     );
   }
+})();
+
+// ── Log Loaded Configuration ──────────────────────────────────────────────────
+// Logs all configuration key-value pairs at startup so operators can verify
+// that the correct env files are being picked up.  Sensitive values (API keys,
+// passwords, tokens, connection strings) are masked.
+(function logConfig() {
+  const { lines } = Utils.getConfigSummary(config);
+  console.log("[Config] ── Loaded configuration ──────────────────────────");
+  lines.forEach((line) => console.log(`[Config]   ${line}`));
+  console.log("[Config] ─────────────────────────────────────────────────");
 })();
 
 // ── Bot Framework Adapter ─────────────────────────────────────────────────────

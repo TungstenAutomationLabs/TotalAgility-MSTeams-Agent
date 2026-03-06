@@ -147,7 +147,17 @@ class TeamsBot extends TeamsActivityHandler {
           .replace(/\n|\r/g, "")
           .trim();
 
-        if (
+        if (messageText === "debug") {
+          // ── Debug command ────────────────────────────────────────────
+          // Prints all loaded config values (sensitive values masked) to
+          // both the console log and the user's Teams chat.
+          const { lines, markdown } = Utils.getConfigSummary(config);
+          console.log("[TeamsBot] Debug command invoked — config dump:");
+          lines.forEach((line) => console.log(`[Config]   ${line}`));
+          await context.sendActivity(
+            `**🔧 Configuration (sensitive values masked):**\n\n${markdown}`
+          );
+        } else if (
           messageText.match(
             /^(clear conversation history|clear history|clear|reset|clear conversation)$/
           )
@@ -355,8 +365,15 @@ class TeamsBot extends TeamsActivityHandler {
 
               if (documentId) {
                 console.log("[TeamsBot] Document preloaded, ID:", documentId);
-                // Clear the base64 string — the Document ID will be used instead.
+                // Clear all file content fields — only the Document ID will be
+                // sent to the Chat Agent via the DOCUMENT input variable.
                 base64String = "";
+                mimeType = "";
+                fileName = "";
+                await context.sendActivity(
+                  `✅ TotalAgility Document created: \`${documentId}\``
+                );
+                await context.sendActivities([{ type: "typing" }]);
               } else {
                 console.warn(
                   "[TeamsBot] Document preload failed — falling back to inline base64."

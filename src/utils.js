@@ -150,10 +150,59 @@ function getRandomProgressMessage() {
   return progress_messages[randomIndex];
 }
 
+// ── Config Debugging ──────────────────────────────────────────────────────────
+
+/**
+ * Keys whose values must never appear in logs or user-visible output.
+ * @type {Set<string>}
+ */
+const SENSITIVE_CONFIG_KEYS = new Set([
+  "MicrosoftAppPassword",
+  "totalAgilityApiKey",
+  "notificationsBearerToken",
+  "azureStorageConnectionString",
+]);
+
+/**
+ * Build a human-readable summary of the current configuration.
+ *
+ * Sensitive values (API keys, passwords, tokens, connection strings) are
+ * masked — only whether they are set or not is shown.
+ *
+ * @param {Object} configObj - The config object (from `require("./config")`).
+ * @returns {{ lines: string[], markdown: string }}
+ *   `lines`    — plain-text lines suitable for `console.log()`.
+ *   `markdown` — Markdown-formatted string suitable for sending to the user.
+ */
+function getConfigSummary(configObj) {
+  const lines = [];
+  const mdLines = [];
+
+  for (const [key, value] of Object.entries(configObj)) {
+    let display;
+    if (SENSITIVE_CONFIG_KEYS.has(key)) {
+      display = value ? "******** (set)" : "(not set)";
+    } else {
+      display =
+        value === undefined || value === null || value === ""
+          ? "(not set)"
+          : value;
+    }
+    lines.push(`${key} = ${display}`);
+    mdLines.push(`**${key}:** \`${display}\``);
+  }
+
+  return {
+    lines,
+    markdown: mdLines.join("  \n"),
+  };
+}
+
 // ── Exports ───────────────────────────────────────────────────────────────────
 module.exports = {
   renderConversationHistory,
   renderConversationHistoryMarkdown,
   getRandomLoadingMessage,
   getRandomProgressMessage,
+  getConfigSummary,
 };
