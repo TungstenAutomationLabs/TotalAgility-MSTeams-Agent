@@ -35,6 +35,14 @@ param conversationHistoryMaxEntries string = ''
 @secure()
 param notificationsBearerToken string = ''
 
+// Document preloading — when enabled, files are pre-created as TotalAgility
+// Documents and referenced by ID rather than passing raw base64 inline.
+param preloadDocumentsAsTotalAgilityDocs string = ''
+param totalAgilityDocumentCreatorProcessId string = ''
+param totalAgilityDocumentCreatorProcessName string = ''
+param totalAgilityDocumentTypeId string = ''
+param totalAgilityDocumentFilenameFieldId string = ''
+
 param webAppSKU string
 
 @maxLength(42)
@@ -159,6 +167,26 @@ resource webApp 'Microsoft.Web/sites@2021-02-01' = {
         {
           name: 'NOTIFICATIONS_BEARER_TOKEN'
           value: notificationsBearerToken
+        }
+        {
+          name: 'PRELOAD_DOCUMENTS_AS_TOTALAGILITY_DOCS'
+          value: preloadDocumentsAsTotalAgilityDocs
+        }
+        {
+          name: 'TOTALAGILITY_DOCUMENT_CREATOR_PROCESS_ID'
+          value: totalAgilityDocumentCreatorProcessId
+        }
+        {
+          name: 'TOTALAGILITY_DOCUMENT_CREATOR_PROCESS_NAME'
+          value: totalAgilityDocumentCreatorProcessName
+        }
+        {
+          name: 'TOTALAGILITY_DOCUMENT_TYPE_ID'
+          value: totalAgilityDocumentTypeId
+        }
+        {
+          name: 'TOTALAGILITY_DOCUMENT_FILENAME_FIELD_ID'
+          value: totalAgilityDocumentFilenameFieldId
         }
         {
           name: 'AZURE_STORAGE_CONNECTION_STRING'

@@ -308,6 +308,7 @@ class TeamsBot extends TeamsActivityHandler {
       let base64String = "";
       let mimeType = "";
       let fileName = "";
+      let documentId = "";
 
       if (
         context.activity.attachments &&
@@ -335,6 +336,33 @@ class TeamsBot extends TeamsActivityHandler {
 
             await context.sendActivity(`File ${fileName} received.`);
             await context.sendActivities([{ type: "typing" }]);
+
+            // ── Document preload (optional) ──────────────────────────
+            // When PRELOAD_DOCUMENTS_AS_TOTALAGILITY_DOCS is enabled,
+            // submit the file to a dedicated Document Creator process
+            // to obtain a TotalAgility Document ID.  This avoids storing
+            // the large base64 string in the process database.
+            if (config.preloadDocumentsAsTotalAgilityDocs === "true" && base64String) {
+              await context.sendActivity("Creating TotalAgility document...");
+              await context.sendActivities([{ type: "typing" }]);
+
+              documentId = await TotalAgilityAgent.createTotalAgilityDocument(
+                base64String,
+                mimeType,
+                ssoKey,
+                fileName
+              );
+
+              if (documentId) {
+                console.log("[TeamsBot] Document preloaded, ID:", documentId);
+                // Clear the base64 string — the Document ID will be used instead.
+                base64String = "";
+              } else {
+                console.warn(
+                  "[TeamsBot] Document preload failed — falling back to inline base64."
+                );
+              }
+            }
           }
         }
       } else {
@@ -362,7 +390,8 @@ class TeamsBot extends TeamsActivityHandler {
         base64String,
         mimeType,
         ssoKey,
-        fileName
+        fileName,
+        documentId
       );
       await context.sendActivity(agentResponse);
 

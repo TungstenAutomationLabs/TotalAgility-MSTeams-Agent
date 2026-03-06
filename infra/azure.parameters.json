@@ -43,6 +43,21 @@
     },
     "notificationsBearerToken": {
       "value": "${{SECRET_NOTIFICATIONS_BEARER_TOKEN}}"
+    },
+    "preloadDocumentsAsTotalAgilityDocs": {
+      "value": "${{PRELOAD_DOCUMENTS_AS_TOTALAGILITY_DOCS}}"
+    },
+    "totalAgilityDocumentCreatorProcessId": {
+      "value": "${{TOTALAGILITY_DOCUMENT_CREATOR_PROCESS_ID}}"
+    },
+    "totalAgilityDocumentCreatorProcessName": {
+      "value": "${{TOTALAGILITY_DOCUMENT_CREATOR_PROCESS_NAME}}"
+    },
+    "totalAgilityDocumentTypeId": {
+      "value": "${{TOTALAGILITY_DOCUMENT_TYPE_ID}}"
+    },
+    "totalAgilityDocumentFilenameFieldId": {
+      "value": "${{TOTALAGILITY_DOCUMENT_FILENAME_FIELD_ID}}"
     }
   }
 }

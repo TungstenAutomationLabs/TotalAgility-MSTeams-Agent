@@ -58,6 +58,34 @@ const config = {
   /** @type {string|undefined} Fixed seed value for deterministic LLM output. Default: `27535`. */
   totalAgilitySeed: process.env.TOTALAGILITY_SEED,
 
+  // ── Document preloading ─────────────────────────────────────────────────
+  /**
+   * @type {string|undefined} When `"true"`, uploaded files are first submitted
+   * to a dedicated TotalAgility "Document Creator" process that returns a
+   * TotalAgility Document ID.  That ID is then passed to the chat agent
+   * instead of the raw base64 content.
+   *
+   * **Why:** Avoids storing large base64 strings as process variables in the
+   * TotalAgility database.  The document is stored once in TotalAgility's
+   * document storage and referenced by ID — reducing database load and
+   * improving performance for large files.
+   *
+   * Default: `"false"` (base64 is sent inline to the chat agent).
+   */
+  preloadDocumentsAsTotalAgilityDocs: process.env.PRELOAD_DOCUMENTS_AS_TOTALAGILITY_DOCS,
+
+  /** @type {string|undefined} Process ID (GUID) of the TotalAgility Document Creator process. Required when `preloadDocumentsAsTotalAgilityDocs` is `"true"`. */
+  totalAgilityDocumentCreatorProcessId: process.env.TOTALAGILITY_DOCUMENT_CREATOR_PROCESS_ID,
+
+  /** @type {string|undefined} Process name of the TotalAgility Document Creator process. Required when `preloadDocumentsAsTotalAgilityDocs` is `"true"`. */
+  totalAgilityDocumentCreatorProcessName: process.env.TOTALAGILITY_DOCUMENT_CREATOR_PROCESS_NAME,
+
+  /** @type {string|undefined} TotalAgility Document Type ID (GUID) used when creating documents via the Document Creator process. */
+  totalAgilityDocumentTypeId: process.env.TOTALAGILITY_DOCUMENT_TYPE_ID,
+
+  /** @type {string|undefined} TotalAgility RuntimeField ID (GUID) for the filename field on the document. */
+  totalAgilityDocumentFilenameFieldId: process.env.TOTALAGILITY_DOCUMENT_FILENAME_FIELD_ID,
+
   // ── Conversation history ────────────────────────────────────────────────
   /** @type {string|undefined} Max messages to keep in the rolling conversation history. Default: `10`. */
   conversationHistoryMaxEntries: process.env.CONVERSATION_HISTORY_MAX_ENTRIES,
