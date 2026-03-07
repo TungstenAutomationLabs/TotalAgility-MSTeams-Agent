@@ -288,38 +288,6 @@ const result = await response.json();
 console.log(result); // { status: "ok", userKey: "jane.doe@contoso.com", message: "..." }
 ```
 
-**Example (PowerShell):**
-```powershell
-$headers = @{
-    "Authorization" = "Bearer YOUR_SECRET_TOKEN"
-    "Content-Type"  = "application/json"
-}
-$body = @{
-    userKey = "jane.doe@contoso.com"
-    message = "Your TotalAgility job has completed successfully."
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "https://your-bot-host/api/notifications" `
-    -Method POST -Headers $headers -Body $body
-```
-
-**Example (Python):**
-```python
-import requests
-
-response = requests.post(
-    "https://your-bot-host/api/notifications",
-    headers={
-        "Authorization": "Bearer YOUR_SECRET_TOKEN",
-        "Content-Type": "application/json",
-    },
-    json={
-        "userKey": "jane.doe@contoso.com",
-        "message": "Your document has been classified and is ready for review.",
-    },
-)
-print(response.json())
-```
 
 **Example — calling from a TotalAgility process:**
 
