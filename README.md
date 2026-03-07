@@ -9,6 +9,7 @@ Key capabilities:
 - Proxy Teams chat to a TotalAgility Chat Agent (or Custom LLM) using REST/OpenAPI
 - Preserve and pass conversation history to the Chat Agent to maintain context
 - Support for sending documents (file upload) to the Chat Agent (see Version notes)
+- Send messages to users, for example to notify of state changes in your Agent or Case
 - Minimal Chat Client logic so the Chat Agent process in TotalAgility can own orchestration, knowledge access and calling other sub-agents
 
 Why use this sample
@@ -23,7 +24,7 @@ Supported channels
 - Any Bot Framework channel (Webchat, Facebook Messenger, WhatsApp, Alexa, etc.) with minimal changes.
 
 Project structure and where to make edits
-- appPackage/: Teams app manifest and package. Example prompts and app configuration live in `appPackage/manifest.json`.
+- appPackage/: Teams app manifest and package. Example prompts ("View prompts" above the Send button in the Teams app) and app configuration live in `appPackage/manifest.json`.
 - src/: core application code
 	- `src/index.js` — app entry point and server bootstrap
 	- `src/config.js` — configuration loader and environment handling
