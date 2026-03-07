@@ -424,7 +424,7 @@ class TeamsBot extends TeamsActivityHandler {
       // ── Cleanup ─────────────────────────────────────────────────────
       isDone = true;
       timers.forEach((timer) => clearTimeout(timer));
-      saveMsg("TotalAgility Bot", agentResponse);
+      saveMsg("TotalAgility Agent", agentResponse);
     } catch (error) {
       await context.sendActivity(
         `⚠️ An error occurred: ${error.message}`
@@ -439,7 +439,7 @@ class TeamsBot extends TeamsActivityHandler {
  * Append a message to the rolling conversation history.
  * When the array exceeds `messageArrayMaxSize`, the oldest entry is removed.
  *
- * @param {string} actor   - The speaker label (e.g. "User", "TotalAgility Bot").
+ * @param {string} actor   - The speaker label (e.g. "User", "TotalAgility Agent").
  * @param {string} message - The message text.
  */
 function saveMsg(actor, message) {
