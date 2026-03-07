@@ -38,11 +38,11 @@ let messageArray = [];
  * Maximum number of messages retained in `messageArray`.
  * Configurable via the `CONVERSATION_HISTORY_MAX_ENTRIES` environment variable.
  * @type {number}
- * @default 10
+ * @default 15
  */
 const messageArrayMaxSize = (() => {
   const val = parseInt(config.conversationHistoryMaxEntries, 10);
-  return isNaN(val) || val <= 0 ? 10 : val;
+  return isNaN(val) || val <= 0 ? 15 : val;
 })();
 
 /** Current TotalAgility SSO session key (refreshed on every message). */
@@ -149,13 +149,22 @@ class TeamsBot extends TeamsActivityHandler {
 
         if (messageText === "debug") {
           // ── Debug command ────────────────────────────────────────────
-          // Prints all loaded config values (sensitive values masked) to
-          // both the console log and the user's Teams chat.
+          // Prints all loaded config values (sensitive values masked) and
+          // the current conversation history to both the console log and
+          // the user's Teams chat.
           const { lines, markdown } = Utils.getConfigSummary(config);
           console.log("[TeamsBot] Debug command invoked — config dump:");
           lines.forEach((line) => console.log(`[Config]   ${line}`));
           await context.sendActivity(
             `**🔧 Configuration (sensitive values masked):**\n\n${markdown}`
+          );
+
+          // Print conversation history
+          const historyMarkdown = Utils.renderConversationHistoryMarkdown(messageArray);
+          console.log("[TeamsBot] Debug — conversation history:");
+          console.log(historyMarkdown);
+          await context.sendActivity(
+            `**💬 Conversation history (${messageArray.length}/${messageArrayMaxSize} entries):**\n\n${historyMarkdown}`
           );
         } else if (
           messageText.match(
@@ -457,3 +466,4 @@ function getMimeType(ext) {
 }
 
 module.exports.TeamsBot = TeamsBot;
+module.exports.saveMsg = saveMsg;

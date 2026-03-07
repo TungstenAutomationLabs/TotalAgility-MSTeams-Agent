@@ -102,12 +102,12 @@ function renderConversationHistory(conversationArray) {
  * @example
  * const md = renderConversationHistoryMarkdown([
  *   { speaker: "User", message: "What's in my workqueue?" },
- *   { speaker: "TotalAgility Bot", message: "You have 3 items." },
+ *   { speaker: "TotalAgility Agent", message: "You have 3 items." },
  * ]);
  * // Returns:
  * // **User:** What's in my workqueue?
  * //
- * // **TotalAgility Bot:** You have 3 items.
+ * // **TotalAgility Agent:** You have 3 items.
  */
 function renderConversationHistoryMarkdown(conversationArray) {
   if (!Array.isArray(conversationArray)) {

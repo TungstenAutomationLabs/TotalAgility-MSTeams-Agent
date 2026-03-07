@@ -37,7 +37,7 @@ const {
   MemoryStorage,
 } = require("botbuilder");
 
-const { TeamsBot } = require("./teamsBot");
+const { TeamsBot, saveMsg } = require("./teamsBot");
 const conversationStore = require("./conversationStore");
 const config = require("./config");
 const Utils = require("./utils");
@@ -339,6 +339,10 @@ expressApp.post(
           await turnContext.sendActivity(message);
         }
       );
+
+      // Add the notification to the conversation history so the Chat Agent
+      // has context about what notifications the user has received.
+      saveMsg("TotalAgility Agent Notification", message);
 
       return res.status(200).json({ status: "ok", userKey, message });
     } catch (err) {

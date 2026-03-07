@@ -76,7 +76,7 @@ Notes on these values
 - `TOTALAGILITY_AGENT_NAME` — the process name of the Chat Agent in TotalAgility
 - `TOTALAGILITY_AGENT_ID` — the process ID of the Chat Agent (often visible in the TotalAgility Designer edit URL)
 - `TOTALAGILITY_TEST_USERNAME` & `TOTALAGILITY_USE_TEST_USER` — override SSO behaviour to force a test TA user (useful for development)
-- `CONVERSATION_HISTORY_MAX_ENTRIES` — maximum number of messages to retain in the conversation history array sent to the Chat Agent. Defaults to `10` if not set or invalid. Higher values provide more context but increase payload size.
+- `CONVERSATION_HISTORY_MAX_ENTRIES` — maximum number of messages to retain in the conversation history array sent to the Chat Agent. Defaults to `15` if not set or invalid. Higher values provide more context but increase payload size.
 
 - `NOTIFICATIONS_BEARER_TOKEN` — a secret token that 3rd-party callers must present as a `Bearer` token when calling the notification endpoints. **Required** to enable `/api/notifications` and `/api/conversations`.
 - `AZURE_STORAGE_CONNECTION_STRING` — connection string for an Azure Storage account used to persist conversation references in Azure Table Storage. When absent the app falls back to an in-memory store (references are lost on restart). For local development with Azurite use `UseDevelopmentStorage=true`.
@@ -95,7 +95,7 @@ Behaviour notes
 
 | Command | Description |
 |---------|-------------|
-| `debug` | Prints all loaded configuration values to the Teams chat (and console log). Sensitive values (API keys, passwords, tokens, connection strings) are masked. Useful for verifying that the correct environment files are being loaded at runtime. |
+| `debug` | Prints all loaded configuration values and the current conversation history to the Teams chat (and console log). Sensitive values (API keys, passwords, tokens, connection strings) are masked. Useful for verifying that the correct environment files are being loaded at runtime and inspecting conversation context. |
 | `clear conversation history` | Displays the current conversation history, then resets it. Also accepts: `clear history`, `clear`, `reset`, `clear conversation`. |
 
 How the Intent Router pattern works
@@ -135,6 +135,11 @@ TOTALAGILITY_USE_TEST_USER=true
 ### Version 1.5
 - Added **document preloading** (`PRELOAD_DOCUMENTS_AS_TOTALAGILITY_DOCS`) — an optional mode where uploaded files are first submitted to a dedicated TotalAgility "Document Creator" process to obtain a Document ID.  The Chat Agent then receives the lightweight ID via the `DOCUMENT` input variable instead of the full base64 string, significantly reducing database load for large files.
 - Added new environment variables: `PRELOAD_DOCUMENTS_AS_TOTALAGILITY_DOCS`, `TOTALAGILITY_DOCUMENT_CREATOR_PROCESS_ID`, `TOTALAGILITY_DOCUMENT_CREATOR_PROCESS_NAME`, `TOTALAGILITY_DOCUMENT_TYPE_ID`, `TOTALAGILITY_DOCUMENT_FILENAME_FIELD_ID`.
+
+### Version 1.6
+- **Notifications added to conversation history:** When a proactive notification is delivered via `POST /api/notifications`, the message is now also appended to the rolling conversation history (as "TotalAgility Agent Notification"). This gives the Chat Agent full context about what notifications the user has received when processing subsequent prompts.
+- **Increased default conversation history size:** The default `CONVERSATION_HISTORY_MAX_ENTRIES` has been increased from `10` to `15` to provide the Chat Agent with more conversational context.
+- **Debug command now shows conversation history:** The `debug` chat command now prints the current conversation history (with entry count) to both the Teams chat and the console log, in addition to the configuration summary.
 
 #### Document Preloading (recommended for production)
 
