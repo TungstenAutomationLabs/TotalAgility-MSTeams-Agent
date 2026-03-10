@@ -324,10 +324,10 @@ class TeamsBot extends TeamsActivityHandler {
       saveMsg("User", userRequest);
 
       // ── File attachment handling ────────────────────────────────────
-      let base64String = "";
-      let mimeType = "";
-      let fileName = "";
-      let documentId = "";
+      // documentInfo will be null when no file is attached, ensuring
+      // document variables are only sent to TotalAgility when the user
+      // explicitly attaches a file in this turn.
+      let documentInfo = null;
 
       if (
         context.activity.attachments &&
@@ -341,8 +341,8 @@ class TeamsBot extends TeamsActivityHandler {
             "application/vnd.microsoft.teams.file.download.info"
           ) {
             const downloadUrl = attachment.content.downloadUrl;
-            fileName = attachment.name;
-            mimeType = getMimeType(attachment.content.fileType);
+            let fileName = attachment.name;
+            let mimeType = getMimeType(attachment.content.fileType);
 
             await context.sendActivity(`Uploading file ${fileName}.`);
             await context.sendActivities([{ type: "typing" }]);
@@ -351,7 +351,7 @@ class TeamsBot extends TeamsActivityHandler {
             const response = await axios.get(downloadUrl, {
               responseType: "arraybuffer",
             });
-            base64String = Buffer.from(response.data).toString("base64");
+            let base64String = Buffer.from(response.data).toString("base64");
 
             await context.sendActivity(`File ${fileName} received.`);
             await context.sendActivities([{ type: "typing" }]);
@@ -365,7 +365,7 @@ class TeamsBot extends TeamsActivityHandler {
               await context.sendActivity("Creating TotalAgility document...");
               await context.sendActivities([{ type: "typing" }]);
 
-              documentId = await TotalAgilityAgent.createTotalAgilityDocument(
+              const documentId = await TotalAgilityAgent.createTotalAgilityDocument(
                 base64String,
                 mimeType,
                 ssoKey,
@@ -374,11 +374,8 @@ class TeamsBot extends TeamsActivityHandler {
 
               if (documentId) {
                 console.log("[TeamsBot] Document preloaded, ID:", documentId);
-                // Clear all file content fields — only the Document ID will be
-                // sent to the Chat Agent via the DOCUMENT input variable.
-                base64String = "";
-                mimeType = "";
-                fileName = "";
+                // Only the Document ID will be sent to the Chat Agent.
+                documentInfo = { documentId };
                 await context.sendActivity(
                   `✅ TotalAgility Document created: \`${documentId}\``
                 );
@@ -387,14 +384,15 @@ class TeamsBot extends TeamsActivityHandler {
                 console.warn(
                   "[TeamsBot] Document preload failed — falling back to inline base64."
                 );
+                // Fall back to sending the raw file content.
+                documentInfo = { base64String, mimeType, fileName };
               }
+            } else {
+              // Preload disabled — send the raw file content.
+              documentInfo = { base64String, mimeType, fileName };
             }
           }
         }
-      } else {
-        await context.sendActivity(
-          "No file attached. Processing your message..."
-        );
       }
 
       // ── Progress timers ─────────────────────────────────────────────
@@ -411,13 +409,12 @@ class TeamsBot extends TeamsActivityHandler {
       });
 
       // ── Call the TotalAgility Agent ─────────────────────────────────
+      // documentInfo is null when no file was attached in this turn,
+      // ensuring document variables are never re-sent unintentionally.
       const agentResponse = await TotalAgilityAgent.callRestService(
         Utils.renderConversationHistoryMarkdown(messageArray),
-        base64String,
-        mimeType,
         ssoKey,
-        fileName,
-        documentId
+        documentInfo
       );
       await context.sendActivity(agentResponse);
 

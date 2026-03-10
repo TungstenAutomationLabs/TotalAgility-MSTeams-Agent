@@ -141,6 +141,12 @@ TOTALAGILITY_USE_TEST_USER=true
 - **Increased default conversation history size:** The default `CONVERSATION_HISTORY_MAX_ENTRIES` has been increased from `10` to `15` to provide the Chat Agent with more conversational context.
 - **Debug command now shows conversation history:** The `debug` chat command now prints the current conversation history (with entry count) to both the Teams chat and the console log, in addition to the configuration summary.
 
+### Version 1.7
+- **Fixed document resubmission bug:** Previously, document-related input variables (`DOCUMENT`, `DOCUMENT_CONTENT`, `DOCUMENT_TYPE`, `DOCUMENT_FILENAME`) were sent on every request to the TotalAgility Agent — even when the user had not attached a file. This caused the same document to be reprocessed on every subsequent message turn.
+- **Documents are now one-shot:** File attachments are only sent to the Chat Agent when the user explicitly uploads a file in the current turn. On text-only messages, the document variables are omitted entirely from the payload.
+- **Refactored `callRestService()` signature:** The function now accepts an optional `documentInfo` object (or `null`) instead of separate `base64String`, `mimeType`, `fileName`, and `documentId` parameters. This makes it impossible to accidentally pass stale document data.
+- **Removed noisy "No file attached" message:** The Chat Client no longer sends "No file attached. Processing your message…" on every text-only turn.
+
 #### Document Preloading (recommended for production)
 
 When users upload files to the Chat Client, the default behaviour is to convert the file to a base64 string and pass it directly as an input variable (`DOCUMENT_CONTENT`) to the TotalAgility Chat Agent process (with `DOCUMENT` left empty).  While simple, this has a significant drawback: the entire base64 string is stored as a process variable in the TotalAgility database, which can be very large for multi-megabyte files.

@@ -156,45 +156,54 @@ async function createTotalAgilityDocument(base64String, mimeType, sessionKey, fi
  * response.
  *
  * **Document handling:**
- * - If `documentId` is provided (preload mode), it is sent as `DOCUMENT`
- *   and the `DOCUMENT_CONTENT`, `DOCUMENT_TYPE`, and `DOCUMENT_FILENAME`
- *   fields are all sent as empty strings.
- * - Otherwise, the raw `base64String`, `mimeType`, and `fileName` are sent
- *   as `DOCUMENT_CONTENT`, `DOCUMENT_TYPE`, and `DOCUMENT_FILENAME`, with
- *   `DOCUMENT` left empty.
+ * Document-related input variables (`DOCUMENT`, `DOCUMENT_CONTENT`,
+ * `DOCUMENT_TYPE`, `DOCUMENT_FILENAME`) are **only included in the payload
+ * when the user explicitly attaches a file** in the current turn.  This
+ * prevents the same document from being re-sent on every subsequent message.
+ *
+ * - If `documentInfo.documentId` is provided (preload mode), it is sent as
+ *   `DOCUMENT` and the content/type/filename fields are empty.
+ * - If `documentInfo` contains `base64String` (inline mode), the raw content,
+ *   MIME type, and filename are sent as `DOCUMENT_CONTENT`, `DOCUMENT_TYPE`,
+ *   and `DOCUMENT_FILENAME`, with `DOCUMENT` left empty.
+ * - If `documentInfo` is `null` / `undefined`, **no document variables are
+ *   included** in the payload at all.
  *
  * @param {string} prompt_text   - The full conversation history rendered as Markdown.
- * @param {string} base64String  - Base64-encoded file content (empty string if no file or if preloaded).
- * @param {string} mimeType      - MIME type of the attached file (empty string if no file or if preloaded).
  * @param {string} sessionKey    - TotalAgility SSO session ID (used as `Authorization` header).
- * @param {string} fileName      - Original filename of the attachment (empty string if no file or if preloaded).
- * @param {string} [documentId]  - TotalAgility Document ID from `createTotalAgilityDocument()`. When present, base64/MIME/filename are ignored.
+ * @param {Object|null} [documentInfo=null] - Document attachment for this turn, or null/undefined if none.
+ * @param {string} [documentInfo.documentId]  - TotalAgility Document ID (preload mode).
+ * @param {string} [documentInfo.base64String] - Base64-encoded file content (inline mode).
+ * @param {string} [documentInfo.mimeType]     - MIME type of the file (inline mode).
+ * @param {string} [documentInfo.fileName]     - Original filename (inline mode).
  * @returns {Promise<string>} The agent's text response, or an error message string.
  */
-async function callRestService(prompt_text, base64String, mimeType, sessionKey, fileName, documentId) {
+async function callRestService(prompt_text, sessionKey, documentInfo) {
   console.log("callRestService() called with: " + prompt_text);
 
-  // Normalise optional parameters to empty strings.
-  if (!base64String) base64String = "";
-  if (!mimeType) mimeType = "";
-  if (!fileName) fileName = "";
-  if (!documentId) documentId = "";
+  // Destructure document info only when provided.
+  const hasDocument = !!documentInfo;
+  const documentId   = (documentInfo && documentInfo.documentId)   || "";
+  const base64String = (documentInfo && documentInfo.base64String) || "";
+  const mimeType     = (documentInfo && documentInfo.mimeType)     || "";
+  const fileName     = (documentInfo && documentInfo.fileName)     || "";
 
-  if (documentId) {
-    console.log("[taAgent] Using preloaded TotalAgility Document ID:", documentId);
-  } else if (base64String) {
-    console.log("File attached with size: " + base64String.length);
+  if (hasDocument) {
+    if (documentId) {
+      console.log("[taAgent] Using preloaded TotalAgility Document ID:", documentId);
+    } else if (base64String) {
+      console.log("[taAgent] File attached with size:", base64String.length);
+    }
+    if (mimeType) console.log("[taAgent] File MIME type:", mimeType);
+  } else {
+    console.log("[taAgent] No document attached for this turn.");
   }
-  if (mimeType) console.log("File MIME type: " + mimeType);
 
   let return_response = "";
   const url = config.totalAgilityEndpoint + "/jobs/sync";
   console.log("Calling TotalAgility on " + url);
 
   // ── Build the job payload ─────────────────────────────────────────────
-  // When a pre-created Document ID is available, send it instead of the
-  // raw base64 content.  This keeps the payload small and avoids storing
-  // large binary strings in the TotalAgility process database.
   const inputVariables = [
     {
       Id: "INPUT_PROMPT",
@@ -224,20 +233,23 @@ async function callRestService(prompt_text, base64String, mimeType, sessionKey, 
     },
   ];
 
-  if (documentId) {
-    // Preload mode — pass only the document reference.
-    // All other document fields are left empty because TotalAgility
-    // retrieves the document content from its own storage using the ID.
-    inputVariables.push({ Id: "DOCUMENT_TYPE", Value: "" });
-    inputVariables.push({ Id: "DOCUMENT_CONTENT", Value: "" });
-    inputVariables.push({ Id: "DOCUMENT_FILENAME", Value: "" });
-    inputVariables.push({ Id: "DOCUMENT", Value: documentId });
-  } else {
-    // Inline mode — pass the raw base64 content.
-    inputVariables.push({ Id: "DOCUMENT_TYPE", Value: mimeType });
-    inputVariables.push({ Id: "DOCUMENT_CONTENT", Value: base64String });
-    inputVariables.push({ Id: "DOCUMENT_FILENAME", Value: fileName });
-    inputVariables.push({ Id: "DOCUMENT", Value: "" });
+  // ── Document variables (only when a file was attached this turn) ─────
+  // When no file is attached, these variables are omitted entirely so the
+  // TotalAgility process receives no stale document data.
+  if (hasDocument) {
+    if (documentId) {
+      // Preload mode — pass only the document reference.
+      inputVariables.push({ Id: "DOCUMENT_TYPE", Value: "" });
+      inputVariables.push({ Id: "DOCUMENT_CONTENT", Value: "" });
+      inputVariables.push({ Id: "DOCUMENT_FILENAME", Value: "" });
+      inputVariables.push({ Id: "DOCUMENT", Value: documentId });
+    } else {
+      // Inline mode — pass the raw base64 content.
+      inputVariables.push({ Id: "DOCUMENT_TYPE", Value: mimeType });
+      inputVariables.push({ Id: "DOCUMENT_CONTENT", Value: base64String });
+      inputVariables.push({ Id: "DOCUMENT_FILENAME", Value: fileName });
+      inputVariables.push({ Id: "DOCUMENT", Value: "" });
+    }
   }
 
   const payload = {
