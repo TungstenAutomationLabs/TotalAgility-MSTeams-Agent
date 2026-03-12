@@ -192,9 +192,10 @@ Use a table with a colored left-border cell to simulate an alert card:
     </table>
 ```
 
-    Swap the left-border color:
-
+Swap the left-border color:
+```
       Success: #00EB86  |  Warning: #FFC600  |  Error: #FF6D69  |  Info: #00A0FB
+```
 
 ---
 
