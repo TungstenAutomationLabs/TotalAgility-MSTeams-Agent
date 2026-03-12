@@ -174,8 +174,8 @@ When you are ready to deploy to Azure:
 	- `src/teamsBot.js` — Teams/Microsoft Bot framework adapter and conversation turn handling
 	- `src/conversationStore.js` — Azure Table Storage–backed persistence for conversation references (proactive messaging)
 	- `src/utils.js` — helper functions including loading/typing feedback messages (customize UI text here)
-- `prompt_examples/` — example system prompts for use with your TotalAgility Chat Agents
-	- `prompt_examples/example_teams_formatting_prompt.md` — a ready-to-use system prompt that instructs an AI to format Teams messages using Tungsten Automation branding (brand colours, logos, HTML formatting patterns that are compatible with the Teams message renderer). Copy or adapt this prompt into your TotalAgility Chat Agent's LLM system prompt to produce consistently branded, accessible notifications and replies in Teams. See [Prompt Examples — Teams Message Formatting](#prompt-examples--teams-message-formatting) below.
+- `prompt_examples/` — example prompts for use with your TotalAgility Chat Agents
+	- `prompt_examples/example_teams_formatting_prompt.md` — a ready-to-use prompt that instructs an AI to format Teams messages using Tungsten Automation branding (brand colours, logos, HTML formatting patterns that are compatible with the Teams message renderer). Copy or adapt this prompt into your TotalAgility Chat Agent's LLM system prompt to produce consistently branded, accessible notifications and replies in Teams. See [Prompt Examples — Teams Message Formatting](#prompt-examples--teams-message-formatting) below.
 - `env/` — environment template files — update these to match your tenant, keys and Agent details
 - `infra/` — infrastructure deployment scripts (Azure Bicep templates used for provisioning, if desired)
 - `devTools/` — developer utilities (Teams App Tester, etc.)
@@ -231,7 +231,7 @@ TOTALAGILITY_DOCUMENT_FILENAME_FIELD_ID=
 
 ### Environment Variable Reference
 
-- `TOTALAGILITY_ENDPOINT` — base TotalAgility REST/OpenAPI endpoint, e.g. `https://{{your_tenant}}.dev.kofaxcloud.com/services/sdk/v1`
+- `TOTALAGILITY_ENDPOINT` — base TotalAgility REST/OpenAPI endpoint, e.g. `https://{{your_tenant}}.dev.tungstencloud.com/services/sdk/v1`
 - `TOTALAGILITY_API_KEY` — API key used to authenticate calls to TotalAgility
 - `TOTALAGILITY_AGENT_NAME` — the process name of the Chat Agent in TotalAgility
 - `TOTALAGILITY_AGENT_ID` — the process ID of the Chat Agent (often visible in the TotalAgility Designer edit URL)
@@ -537,3 +537,4 @@ The **Microsoft 365 Agents Toolkit** (formerly Teams Toolkit) is the primary too
 | Project | Description |
 |---------|-------------|
 | [Agentic Design Patterns for TotalAgility](https://github.com/TungstenAutomationLabs/Agentic_Design_Patterns_For_TotalAgility) | Sample "Tool Use" Chat Agent built in TotalAgility, including examples of document conversion and SSO APIs. Use this companion repository to understand how to build the TotalAgility Agent processes that this Teams Chat Client connects to. |
+
