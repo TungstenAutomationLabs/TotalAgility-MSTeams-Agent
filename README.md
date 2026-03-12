@@ -32,6 +32,8 @@ Project structure and where to make edits
 	- `src/teamsBot.js` — Teams/Microsoft Bot framework adapter and conversation turn handling
 	- `src/conversationStore.js` — Azure Table Storage–backed persistence for conversation references (proactive messaging)
 	- `src/utils.js` — helper functions including loading/typing feedback messages (customize UI text here)
+- prompt_examples/: example system prompts for use with your TotalAgility Chat Agents
+	- `prompt_examples/example_teams_formatting_prompt.md` — a ready-to-use system prompt that instructs an AI to format Teams messages using Tungsten Automation branding (brand colours, logos, HTML formatting patterns that are compatible with the Teams message renderer). Copy or adapt this prompt into your TotalAgility Chat Agent's LLM system prompt to produce consistently branded, accessible notifications and replies in Teams.
 - env/: environment template files — update these to match your tenant, keys and Agent details
 - infra/: infrastructure deployment scripts (Azure Bicep templates used for provisioning, if desired)
 - devTools/: developer utilities (Teams App Tester, etc.)
@@ -348,6 +350,122 @@ Authorization: Bearer <NOTIFICATIONS_BEARER_TOKEN>
 
 ### Deployment and infra
 - The `infra/` folder contains Azure Bicep templates to help provision cloud resources if you want to deploy to Azure.
+
+---
+
+## Deployment Guide
+
+This section provides step-by-step guidance for deploying the Teams Chat Client from scratch, including all prerequisites.
+
+### Prerequisites
+
+Before you begin, ensure you have the following installed and configured:
+
+| # | Prerequisite | Description | Link |
+|---|-------------|-------------|------|
+| 1 | **Visual Studio Code** | The recommended IDE. The project includes VS Code workspace tasks and launch configurations. | [Download VS Code](https://code.visualstudio.com/) |
+| 2 | **Microsoft 365 Agents Toolkit** (VS Code extension) | Formerly "Teams Toolkit". Provides project scaffolding, local tunnelling, provisioning, and deployment commands for Teams apps. Install from the VS Code Extensions marketplace. | [Install Agents Toolkit](https://learn.microsoft.com/en-us/microsoftteams/platform/toolkit/install-agents-toolkit) |
+| 3 | **Microsoft 365 developer sandbox** | A free M365 developer tenant for testing Teams apps without affecting a production environment. Sign up via the Microsoft 365 Developer Program. | [M365 Developer Program](https://developer.microsoft.com/en-us/microsoft-365/dev-program) |
+| 4 | **Azure subscription (sandbox or dev)** | Required for provisioning the Azure Bot Service and hosting the Chat Client in Azure App Service. A free Azure trial or Visual Studio subscriber credits work well for development. | [Azure Free Account](https://azure.microsoft.com/en-gb/free/) |
+| 5 | **Node.js (LTS)** | Required to run the Chat Client locally and install dependencies via npm. Version 18.x or 20.x LTS recommended. | [Download Node.js](https://nodejs.org/) |
+| 6 | **Git** | Version control — needed to clone this repository. | [Download Git](https://git-scm.com/) |
+| 7 | *(Optional)* **Azurite** | Local Azure Storage emulator — useful for testing Azure Table Storage (conversation references) without an Azure account. Included as a VS Code extension or installable via npm. | [Azurite on npm](https://www.npmjs.com/package/azurite) |
+
+### Step-by-step deployment
+
+#### 1. Clone the repository
+
+```bash
+git clone <repository-url>
+cd TotalAgility-Agent
+```
+
+#### 2. Install dependencies
+
+```bash
+npm install
+```
+
+#### 3. Install the Microsoft 365 Agents Toolkit extension
+
+Open VS Code, go to the Extensions panel (`Ctrl+Shift+X`), and search for **"Microsoft 365 Agents Toolkit"** (previously called "Teams Toolkit"). Install the extension and sign in with both your **M365 developer account** and your **Azure account** when prompted.
+
+#### 4. Configure environment variables
+
+Copy the environment template files in `env/` and fill in your values:
+
+- `env/.env.local` — for local development
+- `env/.env.local.user` — for secrets (API keys, tokens) during local dev
+- `env/.env.dev` — for Azure deployment (populated automatically during provisioning)
+- `env/.env.dev.user` — for secrets used in Azure deployment
+
+At a minimum, set:
+```
+TOTALAGILITY_ENDPOINT=https://<your_tenant>.dev.kofaxcloud.com/services/sdk/v1
+SECRET_TOTALAGILITY_API_KEY=<your-api-key>
+TOTALAGILITY_AGENT_NAME=<your-agent-process-name>
+TOTALAGILITY_AGENT_ID=<your-agent-process-id>
+```
+
+Refer to the [Environment variables / configuration](#environment-variables--configuration) section above for the full list.
+
+#### 5. Run locally with the Agents Toolkit
+
+Use one of the following methods:
+
+**Option A — VS Code tasks (recommended):**
+1. Open the Command Palette (`Ctrl+Shift+P`) and select **"Microsoft 365 Agents Toolkit: Preview Your Teams App"**.
+2. Choose **"Local"** as the environment.
+3. The toolkit will automatically start a local dev tunnel, provision a temporary bot registration, and launch the app.
+
+**Option B — npm scripts:**
+```bash
+npm run dev:teamsfx           # start locally for Teams development
+npm run dev:teamsfx:testtool  # start using the Teams App Test Tool
+```
+
+#### 6. Test in Microsoft Teams
+
+1. Open Microsoft Teams (desktop or web) using your **M365 developer sandbox** account.
+2. The Agents Toolkit will sideload the app automatically when previewing locally.
+3. Find the app in the Teams chat and send a message to verify the connection to your TotalAgility Chat Agent.
+
+#### 7. Provision Azure resources
+
+When you are ready to deploy to Azure:
+
+1. Open the Command Palette (`Ctrl+Shift+P`) and select **"Microsoft 365 Agents Toolkit: Provision"**.
+2. Select your Azure subscription and choose a resource group (or create a new one).
+3. The toolkit runs the Bicep templates in `infra/` to create the Azure Bot Service, App Service, and App Service Plan.
+4. After provisioning, check `env/.env.dev` — the toolkit writes `BOT_ID`, `BOT_DOMAIN`, and other values here automatically.
+
+#### 8. Deploy to Azure
+
+1. Open the Command Palette and select **"Microsoft 365 Agents Toolkit: Deploy"**.
+2. The toolkit packages and deploys the Chat Client to the provisioned Azure App Service.
+3. Update `env/.env.dev.user` with your production secrets (`SECRET_TOTALAGILITY_API_KEY`, `SECRET_NOTIFICATIONS_BEARER_TOKEN`, `SECRET_AZURE_STORAGE_CONNECTION_STRING`).
+
+#### 9. Publish the app to your organisation
+
+1. Open the Command Palette and select **"Microsoft 365 Agents Toolkit: Publish"**.
+2. This submits the app package to your M365 tenant's app catalogue for admin approval.
+3. Once approved, users in your organisation can install the Chat Client from the Teams app store.
+
+> **Tip:** For a quick test without publishing, use **"Microsoft 365 Agents Toolkit: Zip Teams App Package"** and sideload the generated `.zip` file manually in Teams.
+
+---
+
+## Microsoft 365 Agents Toolkit — Resources
+
+The **Microsoft 365 Agents Toolkit** (formerly Teams Toolkit) is the primary toolchain for developing, debugging, and deploying Teams apps from Visual Studio Code. The following resources cover installation, project creation, and bot development:
+
+| Resource | Description | Link |
+|----------|-------------|------|
+| **Install the Agents Toolkit** | Official guide for installing the Microsoft 365 Agents Toolkit extension in VS Code. | [learn.microsoft.com — Install Agents Toolkit](https://learn.microsoft.com/en-us/microsoftteams/platform/toolkit/install-agents-toolkit) |
+| **Create a new project** | Step-by-step walkthrough for creating a new Teams app project using the Agents Toolkit. | [learn.microsoft.com — Create a new project](https://learn.microsoft.com/en-us/microsoftteams/platform/toolkit/create-new-project) |
+| **Build a bot with Teams Toolkit** | Microsoft Learn training module covering how to create a Teams bot using the toolkit in VS Code. | [learn.microsoft.com — Teams Toolkit bot training](https://learn.microsoft.com/en-us/training/modules/teams-toolkit-vsc-create-bot/) |
+
+---
 
 ## Related Projects
 
