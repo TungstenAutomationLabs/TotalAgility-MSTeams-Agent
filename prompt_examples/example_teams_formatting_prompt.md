@@ -169,10 +169,14 @@ Square logo (light background):
 Product logos (PNG versions for Teams — SVGs with viewBox are unreliable in Teams):
     TotalAgility (light bg):
 
-    ```<img src="https://pocstaticwebhosting.blob.core.windows.net/$web/agent_assets/logos-TotalAgility/Tungsten-TotalAgility-BlueFontTransparentBackground-689x162.png" alt="TotalAgility" width="200" height="47">```
+```
+<img src="https://pocstaticwebhosting.blob.core.windows.net/$web/agent_assets/logos-TotalAgility/Tungsten-TotalAgility-BlueFontTransparentBackground-689x162.png" alt="TotalAgility" width="200" height="47">
+```
 
     TotalAgility (dark bg):
-    ```<img src="https://pocstaticwebhosting.blob.core.windows.net/$web/agent_assets/logos-TotalAgility/Tungsten-TotalAgility-WhiteFontTransparentBackground-690x162.png" alt="TotalAgility" width="200" height="47">```
+```
+<img src="https://pocstaticwebhosting.blob.core.windows.net/$web/agent_assets/logos-TotalAgility/Tungsten-TotalAgility-WhiteFontTransparentBackground-690x162.png" alt="TotalAgility" width="200" height="47">
+```
 
 NOTE: Avoid the SVG product logos in Teams messages — Teams rendering of SVGs
 
