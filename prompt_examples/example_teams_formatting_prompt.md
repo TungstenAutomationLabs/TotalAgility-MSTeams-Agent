@@ -167,20 +167,18 @@ Square logo (light background):
 ```<img src="https://pocstaticwebhosting.blob.core.windows.net/$web/agent_assets/logos-Tungsten/TungstenAutomationLogoBlueFontWhiteBackground-150x150.png" alt="Tungsten Automation" width="75" height="75">```
 
 Product logos (PNG versions for Teams — SVGs with viewBox are unreliable in Teams):
-    TotalAgility (light bg):
 
+#### TotalAgility (light bg):
 ```
 <img src="https://pocstaticwebhosting.blob.core.windows.net/$web/agent_assets/logos-TotalAgility/Tungsten-TotalAgility-BlueFontTransparentBackground-689x162.png" alt="TotalAgility" width="200" height="47">
 ```
 
-    TotalAgility (dark bg):
+#### TotalAgility (dark bg):
 ```
 <img src="https://pocstaticwebhosting.blob.core.windows.net/$web/agent_assets/logos-TotalAgility/Tungsten-TotalAgility-WhiteFontTransparentBackground-690x162.png" alt="TotalAgility" width="200" height="47">
 ```
 
-NOTE: Avoid the SVG product logos in Teams messages — Teams rendering of SVGs
-
-with viewBox fragments is inconsistent. Use the PNG versions above instead.
+NOTE: Avoid the SVG logos in Teams messages — Teams rendering of SVGs with viewBox fragments is inconsistent. Use PNG instead.
 
 ### H. Notification / Alert Block
 Use a table with a colored left-border cell to simulate an alert card:
