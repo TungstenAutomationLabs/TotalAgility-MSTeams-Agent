@@ -12,6 +12,14 @@
  *   is passed to the chat agent — avoiding large base64 strings in the
  *   process database.
  *
+ * **Session management** (added in v1.8):
+ * SSO session keys are cached per user and reused across requests. If the
+ * TotalAgility API returns a 403 "Invalid Session ID" error, the module
+ * automatically clears the stale session, requests a fresh one via SSO, and
+ * retries the failed call exactly once. A second consecutive 403 is treated
+ * as a permanent authentication failure and returns a user-friendly error
+ * message — preventing infinite retry loops.
+ *
  * The TotalAgility "sync" job endpoint (`/jobs/sync`) is used so that the
  * process runs in-memory on the server for lower latency.
  *
@@ -32,6 +40,150 @@
 
 const config = require("./config");
 const { TeamsInfo } = require("botbuilder");
+
+// ── Session Management ────────────────────────────────────────────────────────
+
+/**
+ * Custom error thrown when TotalAgility returns a 403 with an "Invalid Session
+ * ID" message, indicating the SSO session has expired or is otherwise invalid.
+ *
+ * This error is caught by the auth-aware wrapper functions
+ * ({@link callRestServiceWithAuth}, {@link createTotalAgilityDocumentWithAuth})
+ * which clear the stale session, request a fresh one, and retry the call once.
+ *
+ * @extends Error
+ */
+class InvalidSessionError extends Error {
+  /**
+   * @param {string} message - The TotalAgility error message.
+   */
+  constructor(message) {
+    super(message);
+    this.name = "InvalidSessionError";
+  }
+}
+
+/**
+ * In-memory cache of TotalAgility SSO session keys, keyed by user identifier
+ * (email address or test username).
+ *
+ * Sessions are reused across API calls until they expire or are explicitly
+ * invalidated by a 403 response. This avoids the overhead of requesting a
+ * new SSO session for every single API call.
+ *
+ * @type {Map<string, string>}
+ * @private
+ */
+const sessionCache = new Map();
+
+/**
+ * Resolve a consistent user identifier from the current bot turn context.
+ *
+ * - In test mode (`TOTALAGILITY_USE_TEST_USER=true`): returns the configured
+ *   test username.
+ * - In production: resolves the Teams user's email address via
+ *   `TeamsInfo.getMember()`.
+ *
+ * @param {import("botbuilder").TurnContext} context - The current bot turn context.
+ * @returns {Promise<string|null>} The user identifier, or `null` if unresolvable.
+ * @private
+ */
+async function _resolveUserId(context) {
+  if (config.totalAgilityUseTestUser === "true") {
+    return config.totalAgilityTestUserName;
+  }
+  const userInfo = await getCurrentUserIdAndEmail(context);
+  return userInfo ? userInfo.email : null;
+}
+
+/**
+ * Obtain a valid TotalAgility SSO session key for the current user.
+ *
+ * Returns a cached session if one exists (and `forceRefresh` is false),
+ * otherwise requests a new session via {@link taSSOLogin} and stores it
+ * in the cache.
+ *
+ * @param {import("botbuilder").TurnContext} context - The current bot turn context.
+ * @param {boolean} [forceRefresh=false] - When `true`, bypasses the cache and
+ *   always requests a new session from TotalAgility.
+ * @returns {Promise<string>} The TotalAgility session key.
+ * @throws {Error} If user identity cannot be resolved or SSO login fails.
+ * @private
+ */
+async function _getSession(context, forceRefresh = false) {
+  const userId = await _resolveUserId(context);
+  if (!userId) {
+    throw new Error("Unable to resolve user identity for TotalAgility SSO.");
+  }
+
+  if (!forceRefresh && sessionCache.has(userId)) {
+    console.log(`[taAgent] Using cached session for user: ${userId}`);
+    return sessionCache.get(userId);
+  }
+
+  console.log(`[taAgent] Requesting new SSO session for user: ${userId}`);
+  const sessionKey = await taSSOLogin(context);
+  sessionCache.set(userId, sessionKey);
+  return sessionKey;
+}
+
+/**
+ * Remove the cached session for the current user, forcing a fresh SSO login
+ * on the next API call.
+ *
+ * Called automatically when a 403 "Invalid Session ID" response is received.
+ *
+ * @param {import("botbuilder").TurnContext} context - The current bot turn context.
+ * @returns {Promise<void>}
+ * @private
+ */
+async function _clearSession(context) {
+  const userId = await _resolveUserId(context);
+  if (userId && sessionCache.has(userId)) {
+    console.log(`[taAgent] Clearing cached session for user: ${userId}`);
+    sessionCache.delete(userId);
+  }
+}
+
+/**
+ * Inspect a `fetch` Response for a TotalAgility 403 "Invalid Session ID" error.
+ *
+ * If the response status is 403 and the JSON body contains an `ErrorMessage`
+ * matching "Invalid Session ID", an {@link InvalidSessionError} is thrown so
+ * callers can trigger a session refresh and retry.
+ *
+ * For non-403 responses this function is a no-op.  For 403 responses that are
+ * **not** invalid-session errors, a generic `Error` is thrown.
+ *
+ * @param {Response} response - The `fetch` Response object.
+ * @param {string}   url      - The request URL (for logging).
+ * @throws {InvalidSessionError} If the response is a 403 with an invalid session message.
+ * @throws {Error} If the response is a 403 for any other reason.
+ * @private
+ */
+async function _checkForInvalidSession(response, url) {
+  if (response.status === 403) {
+    let body;
+    try {
+      body = await response.json();
+    } catch (_) {
+      // Could not parse the response body — treat as a generic 403.
+    }
+
+    if (
+      body &&
+      body.ErrorMessage &&
+      String(body.ErrorMessage).includes("Invalid Session ID")
+    ) {
+      console.warn("[taAgent] Invalid session detected:", body.ErrorMessage);
+      throw new InvalidSessionError(body.ErrorMessage);
+    }
+
+    // 403 but not an invalid session — throw a generic HTTP error.
+    const detail = body && body.ErrorMessage ? body.ErrorMessage : "Forbidden";
+    throw new Error(`HTTP 403: ${detail}. URL: ${url}`);
+  }
+}
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -62,6 +214,9 @@ function tester(text) {
  * passing it as a process input variable.  The response returns the
  * `DocumentId` at the top level of the JSON body.
  *
+ * **Note:** This low-level function does not manage sessions. Use
+ * {@link createTotalAgilityDocumentWithAuth} for automatic session management.
+ *
  * Required config values (set via environment variables):
  * - `totalAgilityDocumentCreatorProcessId`  — Process ID (GUID)
  * - `totalAgilityDocumentCreatorProcessName` — Process name
@@ -73,6 +228,7 @@ function tester(text) {
  * @param {string} sessionKey    - TotalAgility SSO session ID.
  * @param {string} fileName      - Original filename (e.g. `"report.pdf"`).
  * @returns {Promise<string>} The TotalAgility Document ID, or empty string on failure.
+ * @throws {InvalidSessionError} If TotalAgility returns a 403 "Invalid Session ID".
  */
 async function createTotalAgilityDocument(base64String, mimeType, sessionKey, fileName) {
   console.log("[taAgent] createTotalAgilityDocument() called for:", fileName);
@@ -124,6 +280,9 @@ async function createTotalAgilityDocument(base64String, mimeType, sessionKey, fi
       body: JSON.stringify(payload),
     });
 
+    // Check for expired/invalid session (throws InvalidSessionError).
+    await _checkForInvalidSession(response, url);
+
     if (!response.ok) {
       throw new Error(
         `Document Creator HTTP error! status: ${response.status}, URL: ${url}`
@@ -142,7 +301,76 @@ async function createTotalAgilityDocument(base64String, mimeType, sessionKey, fi
     console.warn("[taAgent] Document Creator did not return a DocumentId.");
     return "";
   } catch (error) {
+    // Re-throw session errors so the auth wrapper can handle them.
+    if (error instanceof InvalidSessionError) throw error;
+
     console.error("[taAgent] Document Creator error:", error);
+    return "";
+  }
+}
+
+/**
+ * Pre-create a TotalAgility Document **with automatic session management**.
+ *
+ * This is the recommended entry point for document creation. It:
+ * 1. Obtains a session key (from cache or via SSO).
+ * 2. Calls {@link createTotalAgilityDocument}.
+ * 3. On a 403 "Invalid Session ID" error, clears the stale session, requests
+ *    a fresh one, and retries the call exactly **once**.
+ * 4. Returns an empty string on any authentication failure (allowing the
+ *    caller in `teamsBot.js` to fall back to inline base64 mode).
+ *
+ * @param {string} base64String - Base64-encoded file content.
+ * @param {string} mimeType     - MIME type of the file.
+ * @param {import("botbuilder").TurnContext} context - The current bot turn context (used for session management).
+ * @param {string} fileName     - Original filename.
+ * @returns {Promise<string>} The TotalAgility Document ID, or empty string on failure.
+ */
+async function createTotalAgilityDocumentWithAuth(base64String, mimeType, context, fileName) {
+  if (!base64String) return "";
+
+  // Step 1: Obtain a session key (cached or new).
+  let sessionKey;
+  try {
+    sessionKey = await _getSession(context);
+  } catch (ssoErr) {
+    console.error("[taAgent] SSO login failed for document creation:", ssoErr.message);
+    return "";
+  }
+
+  // Step 2: Attempt the document creation.
+  try {
+    return await createTotalAgilityDocument(base64String, mimeType, sessionKey, fileName);
+  } catch (err) {
+    if (err instanceof InvalidSessionError) {
+      // Step 3: Session expired — clear and retry once.
+      console.log("[taAgent] Session expired during document creation, retrying...");
+      await _clearSession(context);
+
+      try {
+        sessionKey = await _getSession(context, true);
+      } catch (ssoErr) {
+        console.error("[taAgent] SSO re-login failed for document creation:", ssoErr.message);
+        return "";
+      }
+
+      try {
+        return await createTotalAgilityDocument(base64String, mimeType, sessionKey, fileName);
+      } catch (retryErr) {
+        if (retryErr instanceof InvalidSessionError) {
+          console.error(
+            "[taAgent] Session still invalid for document creation after refresh — giving up."
+          );
+        } else {
+          console.error("[taAgent] Document creation error on retry:", retryErr);
+        }
+        return "";
+      }
+    }
+
+    // Non-session error (createTotalAgilityDocument already returns "" for
+    // most errors, so this path is a safety net).
+    console.error("[taAgent] Unexpected error in createTotalAgilityDocumentWithAuth:", err);
     return "";
   }
 }
@@ -169,6 +397,9 @@ async function createTotalAgilityDocument(base64String, mimeType, sessionKey, fi
  * - If `documentInfo` is `null` / `undefined`, **no document variables are
  *   included** in the payload at all.
  *
+ * **Note:** This low-level function does not manage sessions. Use
+ * {@link callRestServiceWithAuth} for automatic session management.
+ *
  * @param {string} prompt_text   - The full conversation history rendered as Markdown.
  * @param {string} sessionKey    - TotalAgility SSO session ID (used as `Authorization` header).
  * @param {Object|null} [documentInfo=null] - Document attachment for this turn, or null/undefined if none.
@@ -177,6 +408,7 @@ async function createTotalAgilityDocument(base64String, mimeType, sessionKey, fi
  * @param {string} [documentInfo.mimeType]     - MIME type of the file (inline mode).
  * @param {string} [documentInfo.fileName]     - Original filename (inline mode).
  * @returns {Promise<string>} The agent's text response, or an error message string.
+ * @throws {InvalidSessionError} If TotalAgility returns a 403 "Invalid Session ID".
  */
 async function callRestService(prompt_text, sessionKey, documentInfo) {
   console.log("callRestService() called with: " + prompt_text);
@@ -277,6 +509,9 @@ async function callRestService(prompt_text, sessionKey, documentInfo) {
       body: JSON.stringify(payload),
     });
 
+    // Check for expired/invalid session (throws InvalidSessionError).
+    await _checkForInvalidSession(response, url);
+
     if (!response.ok) {
       throw new Error(
         `HTTP error! status: ${response.status} \n\n URL: ${url} \n\n`
@@ -297,12 +532,104 @@ async function callRestService(prompt_text, sessionKey, documentInfo) {
       return_response = "No Returned Variables found.";
     }
   } catch (error) {
+    // Re-throw session errors so the auth wrapper can handle retry logic.
+    if (error instanceof InvalidSessionError) throw error;
+
     console.error("Error: ", error);
     return_response =
       "Error: " + error + "\nPayload: " + JSON.stringify(payload);
   }
 
   return return_response;
+}
+
+/**
+ * Call the TotalAgility Agent **with automatic session management**.
+ *
+ * This is the **primary entry point** for sending prompts to the Agent from
+ * `teamsBot.js`.  It handles the full session lifecycle:
+ *
+ * 1. **Obtain a session** — retrieves a cached SSO session key for the
+ *    current user, or requests a new one via {@link taSSOLogin} if none
+ *    exists.
+ * 2. **Call the Agent** — delegates to {@link callRestService}.
+ * 3. **Retry on session expiry** — if the call returns a 403 "Invalid
+ *    Session ID" error, the stale session is cleared, a fresh session is
+ *    requested, and the call is retried exactly **once**.
+ * 4. **Loop prevention** — if the retry also returns a 403, a user-friendly
+ *    error message is returned instead of retrying again, preventing an
+ *    infinite loop.
+ * 5. **Graceful SSO failure** — if the SSO login itself fails (either on
+ *    initial login or during the retry), a user-friendly error message is
+ *    returned.
+ *
+ * @param {import("botbuilder").TurnContext} context - The current bot turn context.
+ * @param {string} prompt_text   - The full conversation history rendered as Markdown.
+ * @param {Object|null} [documentInfo=null] - Document attachment for this turn.
+ * @param {string} [documentInfo.documentId]  - TotalAgility Document ID (preload mode).
+ * @param {string} [documentInfo.base64String] - Base64-encoded file content (inline mode).
+ * @param {string} [documentInfo.mimeType]     - MIME type of the file (inline mode).
+ * @param {string} [documentInfo.fileName]     - Original filename (inline mode).
+ * @returns {Promise<string>} The agent's text response, or a user-facing error message.
+ */
+async function callRestServiceWithAuth(context, prompt_text, documentInfo) {
+  let sessionKey;
+
+  // Step 1: Obtain a session key (cached or new).
+  try {
+    sessionKey = await _getSession(context);
+  } catch (ssoErr) {
+    console.error("[taAgent] SSO login failed:", ssoErr.message);
+    return (
+      "⚠️ Unable to sign into TotalAgility. Please try again in a moment.\n\n" +
+      `Error: ${ssoErr.message}`
+    );
+  }
+
+  // Step 2: Call the Agent API.
+  try {
+    return await callRestService(prompt_text, sessionKey, documentInfo);
+  } catch (err) {
+    if (err instanceof InvalidSessionError) {
+      // Step 3: Session expired — clear the stale session and retry once.
+      console.log("[taAgent] Session expired, requesting new session and retrying...");
+      await _clearSession(context);
+
+      let freshSessionKey;
+      try {
+        freshSessionKey = await _getSession(context, true);
+      } catch (ssoErr) {
+        console.error("[taAgent] SSO re-login failed:", ssoErr.message);
+        return (
+          "⚠️ Unable to re-authenticate with TotalAgility after session expiry.\n\n" +
+          `Error: ${ssoErr.message}`
+        );
+      }
+
+      // Step 4: Retry with the fresh session.
+      try {
+        return await callRestService(prompt_text, freshSessionKey, documentInfo);
+      } catch (retryErr) {
+        if (retryErr instanceof InvalidSessionError) {
+          // Loop prevention: two consecutive 403s → give up gracefully.
+          console.error("[taAgent] Session still invalid after refresh — giving up.");
+          return (
+            "⚠️ Unable to establish a valid TotalAgility session. " +
+            "Your session was refreshed but remains invalid. " +
+            "Please contact your administrator."
+          );
+        }
+        // Non-session error on retry.
+        console.error("[taAgent] Error on retry:", retryErr);
+        return `⚠️ An error occurred while calling the TotalAgility Agent.\n\nError: ${retryErr.message}`;
+      }
+    }
+
+    // Non-session error on first attempt. (callRestService already catches
+    // most errors and returns strings, so this path is a safety net.)
+    console.error("[taAgent] Unexpected error in callRestServiceWithAuth:", err);
+    return `⚠️ An error occurred while calling the TotalAgility Agent.\n\nError: ${err.message}`;
+  }
 }
 
 /**
@@ -314,6 +641,11 @@ async function callRestService(prompt_text, sessionKey, documentInfo) {
  *
  * The TotalAgility SSO API returns an existing session if one is already
  * active, so it is safe (and recommended) to call this on every message turn.
+ *
+ * **Note:** Callers should prefer {@link callRestServiceWithAuth} and
+ * {@link createTotalAgilityDocumentWithAuth} which manage sessions
+ * automatically — only use `taSSOLogin` directly if you need low-level
+ * session control.
  *
  * @param {import("botbuilder").TurnContext} context - The current bot turn context.
  * @returns {Promise<string>} The TotalAgility session ID.
@@ -357,7 +689,7 @@ async function taSSOLogin(context) {
     return ssoData.SessionId;
   } catch (error) {
     console.error("SSO Login Error: ", error);
-    throw error; // Bubble up — caught in teamsBot.js onMessage handler.
+    throw error; // Bubble up — caught by _getSession or callRestServiceWithAuth.
   }
 }
 
@@ -388,6 +720,8 @@ async function getCurrentUserIdAndEmail(context) {
 module.exports = {
   tester,
   callRestService,
+  callRestServiceWithAuth,
   createTotalAgilityDocument,
+  createTotalAgilityDocumentWithAuth,
   taSSOLogin,
 };

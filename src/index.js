@@ -107,10 +107,15 @@ const botFrameworkAuthentication = new ConfigurationBotFrameworkAuthentication(
 const adapter = new CloudAdapter(botFrameworkAuthentication);
 
 // ── User State (SSO key persistence) ─────────────────────────────────────────
-// MemoryStorage is used to persist user-scoped state (e.g. the TotalAgility
-// SSO session key) across conversation turns within the same process.
+// MemoryStorage is used to persist user-scoped Bot Framework state across
+// conversation turns within the same process.
 // NOTE: MemoryStorage is not durable across restarts.  For production at
 // scale, consider Azure Blob Storage or Cosmos DB.
+//
+// As of v1.8, TotalAgility SSO session keys are cached per-user inside
+// taAgent.js rather than in Bot Framework UserState.  The userState and
+// ssoKeyAccessor below are retained for backward compatibility but are no
+// longer actively used for session management.
 
 const memoryStorage = new MemoryStorage();
 const userState = new UserState(memoryStorage);

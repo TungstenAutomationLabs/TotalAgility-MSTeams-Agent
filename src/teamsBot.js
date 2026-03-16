@@ -12,6 +12,13 @@
  * - Capture and persist `ConversationReference` objects so that proactive
  *   notifications can be delivered later via `/api/notifications`.
  *
+ * **Session management (v1.8):**
+ * SSO session acquisition and caching is handled entirely by `taAgent.js`.
+ * This module no longer calls `taSSOLogin()` directly — instead it uses
+ * `callRestServiceWithAuth()` and `createTotalAgilityDocumentWithAuth()`
+ * which obtain, cache, and refresh sessions automatically (including
+ * transparent retry on 403 "Invalid Session ID" errors).
+ *
  * @see {@link module:taAgent}   TotalAgility API integration
  * @see {@link module:conversationStore}  Conversation reference persistence
  * @see {@link module:utils}     Helper utilities (loading messages, history rendering)
@@ -44,9 +51,6 @@ const messageArrayMaxSize = (() => {
   const val = parseInt(config.conversationHistoryMaxEntries, 10);
   return isNaN(val) || val <= 0 ? 15 : val;
 })();
-
-/** Current TotalAgility SSO session key (refreshed on every message). */
-let ssoKey = "";
 
 /**
  * In-memory cache mapping AAD object IDs to email addresses.
@@ -182,19 +186,9 @@ class TeamsBot extends TeamsActivityHandler {
           await context.sendActivity(Utils.getRandomLoadingMessage());
           await context.sendActivities([{ type: "typing" }]);
 
-          // Authenticate with TotalAgility via SSO.
-          try {
-            ssoKey = await TotalAgilityAgent.taSSOLogin(context);
-          } catch (ssoErr) {
-            console.error("[TeamsBot] SSO login failed:", ssoErr.message);
-            await context.sendActivity(
-              `⚠️ Unable to sign into TotalAgility. Please try again in a moment.\n\nError: ${ssoErr.message}`
-            );
-            return;
-          }
-
-          await context.sendActivities([{ type: "typing" }]);
-          await this.handleMessageWithLoadingIndicator(context, ssoKey);
+          // Session management is handled by callRestServiceWithAuth() in
+          // taAgent.js — no explicit SSO login is needed here.
+          await this.handleMessageWithLoadingIndicator(context);
           await next();
         }
       } catch (err) {
@@ -301,14 +295,17 @@ class TeamsBot extends TeamsActivityHandler {
    * Process a user message: download any file attachments, call the
    * TotalAgility Agent API, and return the response to the user.
    *
+   * Session management (SSO login, caching, 403 retry) is handled
+   * transparently by `callRestServiceWithAuth()` and
+   * `createTotalAgilityDocumentWithAuth()` in `taAgent.js`.
+   *
    * While waiting for the agent response, periodic "still working" messages
    * are sent at the intervals defined in `PROGRESS_INTERVALS`.
    *
    * @param {import("botbuilder").TurnContext} context - The current turn context.
-   * @param {string} ssoKey - The TotalAgility SSO session key.
    * @returns {Promise<void>}
    */
-  async handleMessageWithLoadingIndicator(context, ssoKey) {
+  async handleMessageWithLoadingIndicator(context) {
     await context.sendActivities([{ type: "typing" }]);
     console.log("Running with Message Activity.");
 
@@ -365,10 +362,12 @@ class TeamsBot extends TeamsActivityHandler {
               await context.sendActivity("Creating TotalAgility document...");
               await context.sendActivities([{ type: "typing" }]);
 
-              const documentId = await TotalAgilityAgent.createTotalAgilityDocument(
+              // Use the auth-aware wrapper — handles session acquisition,
+              // caching, and transparent retry on 403 expiry.
+              const documentId = await TotalAgilityAgent.createTotalAgilityDocumentWithAuth(
                 base64String,
                 mimeType,
-                ssoKey,
+                context,
                 fileName
               );
 
@@ -409,11 +408,14 @@ class TeamsBot extends TeamsActivityHandler {
       });
 
       // ── Call the TotalAgility Agent ─────────────────────────────────
-      // documentInfo is null when no file was attached in this turn,
-      // ensuring document variables are never re-sent unintentionally.
-      const agentResponse = await TotalAgilityAgent.callRestService(
+      // Uses callRestServiceWithAuth which handles SSO session
+      // acquisition, caching, and automatic retry on 403 "Invalid
+      // Session ID" errors.  documentInfo is null when no file was
+      // attached in this turn, ensuring document variables are never
+      // re-sent unintentionally.
+      const agentResponse = await TotalAgilityAgent.callRestServiceWithAuth(
+        context,
         Utils.renderConversationHistoryMarkdown(messageArray),
-        ssoKey,
         documentInfo
       );
       await context.sendActivity(agentResponse);

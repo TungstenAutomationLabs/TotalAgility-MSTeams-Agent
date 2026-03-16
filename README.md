@@ -514,6 +514,13 @@ TOTALAGILITY_USE_TEST_USER=true
 - **Refactored `callRestService()` signature:** The function now accepts an optional `documentInfo` object (or `null`) instead of separate `base64String`, `mimeType`, `fileName`, and `documentId` parameters. This makes it impossible to accidentally pass stale document data.
 - **Removed noisy "No file attached" message:** The Chat Client no longer sends "No file attached. Processing your message…" on every text-only turn.
 
+### Version 1.8
+- **SSO session caching:** TotalAgility SSO session keys are now cached per user in `taAgent.js` and reused across requests, eliminating the overhead of requesting a new session for every API call.
+- **Automatic 403 retry with loop prevention:** If a TotalAgility API call returns a 403 "Invalid Session ID" error (e.g. session timeout), the stale session is cleared, a fresh SSO login is performed, and the call is retried exactly **once**. If the retry also returns a 403, a user-friendly error message is displayed instead of retrying indefinitely — preventing infinite loops.
+- **Graceful SSO failure handling:** If the SSO login itself fails (either on initial login or during a retry after session expiry), a user-friendly error message is returned to the Teams chat rather than an unhandled exception.
+- **New auth-aware entry points:** Added `callRestServiceWithAuth()` and `createTotalAgilityDocumentWithAuth()` in `taAgent.js` which manage the full session lifecycle (obtain → use → detect expiry → refresh → retry). These are now the primary functions called by `teamsBot.js`.
+- **Simplified `teamsBot.js`:** Removed the per-request `taSSOLogin()` call and the module-level `ssoKey` variable from `teamsBot.js`. The `handleMessageWithLoadingIndicator()` method no longer takes an `ssoKey` parameter — session management is fully encapsulated in `taAgent.js`.
+
 ---
 
 ## Microsoft 365 Agents Toolkit — Resources
