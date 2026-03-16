@@ -258,6 +258,7 @@ TOTALAGILITY_DOCUMENT_FILENAME_FIELD_ID=
 |---------|-------------|
 | `debug` | Prints all loaded configuration values and the current conversation history to the Teams chat (and console log). Sensitive values (API keys, passwords, tokens, connection strings) are masked. Useful for verifying that the correct environment files are being loaded at runtime and inspecting conversation context. |
 | `clear conversation history` | Displays the current conversation history, then resets it. Also accepts: `clear history`, `clear`, `reset`, `clear conversation`. |
+| `clear teams chat window` | Sends 50 lines of blank text to visually push previous messages off-screen in the Teams chat window. Does **not** contact TotalAgility or affect conversation history — purely cosmetic. |
 
 ---
 
@@ -533,6 +534,9 @@ TOTALAGILITY_USE_TEST_USER=true
 - **Server keep-alive tuning:** `server.keepAliveTimeout` and `server.headersTimeout` in `index.js` are now set to 250 s / 255 s respectively, slightly above Azure App Service's 240 s load-balancer idle timeout. This prevents premature socket closure that could cause 502 errors on Azure.
 - **Single-timer progress scheduler:** Replaced the 20 separate `setTimeout` calls for "still working" messages with a single chained timer (`startProgressScheduler()`) that fires at each interval in turn — reducing event-loop overhead during long-running Agent calls.
 - **Removed `axios` dependency:** The `axios` package has been removed from `package.json` since all HTTP calls now use `fetch` (backed by `undici`).
+
+### Version 1.9.1
+- **Clear Teams Chat Window command:** Added a new `Clear Teams Chat Window` bot command (visible in the Teams command menu) that sends 50 lines of blank text to visually push previous messages off-screen. This is a purely cosmetic, client-side action — nothing is sent to TotalAgility and the conversation history is not modified.
 
 ---
 

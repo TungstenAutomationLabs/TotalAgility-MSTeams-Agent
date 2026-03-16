@@ -244,7 +244,9 @@ class TeamsBot extends TeamsActivityHandler {
         ) {
           // Send 50 lines of blank text to visually clear the Teams chat window.
           // Nothing is sent to TotalAgility — this is purely cosmetic.
-          const blankLines = Array(50).fill(" ").join("\n");
+          // Each line uses a non-breaking space (\u00A0) so Teams treats it
+          // as valid, non-empty content.
+          const blankLines = Array(50).fill("\u00A0").join("\n\n");
           await context.sendActivity(blankLines);
         } else {
           // Send an initial loading message and typing indicator.
