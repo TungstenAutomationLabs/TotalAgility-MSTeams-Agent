@@ -86,6 +86,28 @@ const config = {
   /** @type {string|undefined} TotalAgility RuntimeField ID (GUID) for the filename field on the document. */
   totalAgilityDocumentFilenameFieldId: process.env.TOTALAGILITY_DOCUMENT_FILENAME_FIELD_ID,
 
+  // ── Request timeouts (v1.9) ─────────────────────────────────────────────
+  /**
+   * @type {string|undefined} Timeout in milliseconds for SSO login requests.
+   * Default: `15000` (15 seconds).
+   */
+  totalAgilitySsoTimeoutMs: process.env.TOTALAGILITY_SSO_TIMEOUT_MS,
+
+  /**
+   * @type {string|undefined} Timeout in milliseconds for Agent `/jobs/sync`
+   * calls.  Agent processes can run for extended periods (LLM calls, multi-step
+   * workflows), so this should be generous.
+   * Default: `300000` (5 minutes).
+   */
+  totalAgilityAgentTimeoutMs: process.env.TOTALAGILITY_AGENT_TIMEOUT_MS,
+
+  /**
+   * @type {string|undefined} Timeout in milliseconds for Document Creator
+   * `/jobs/sync` calls.  Large files may take longer to process.
+   * Default: `120000` (2 minutes).
+   */
+  totalAgilityDocumentTimeoutMs: process.env.TOTALAGILITY_DOCUMENT_TIMEOUT_MS,
+
   // ── Conversation history ────────────────────────────────────────────────
   /** @type {string|undefined} Max messages to keep in the rolling conversation history. Default: `10`. */
   conversationHistoryMaxEntries: process.env.CONVERSATION_HISTORY_MAX_ENTRIES,

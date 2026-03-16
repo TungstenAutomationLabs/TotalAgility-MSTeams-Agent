@@ -20,6 +20,19 @@
  * as a permanent authentication failure and returns a user-friendly error
  * message — preventing infinite retry loops.
  *
+ * **Performance optimisations** (added in v1.9):
+ * - **HTTP connection pooling** — a shared `undici.Pool` keeps TCP/TLS
+ *   connections alive to the TotalAgility origin, eliminating the TLS
+ *   handshake overhead on every request.
+ * - **Request timeouts** — all HTTP calls use `AbortController` with
+ *   configurable per-call-type timeouts (`TOTALAGILITY_SSO_TIMEOUT_MS`,
+ *   `TOTALAGILITY_AGENT_TIMEOUT_MS`, `TOTALAGILITY_DOCUMENT_TIMEOUT_MS`).
+ * - **SSO login deduplication** — concurrent session refresh requests for
+ *   the same user are coalesced into a single in-flight SSO call, preventing
+ *   a thundering-herd of SSO logins.
+ * - **Timing instrumentation** — every HTTP call logs its duration so
+ *   operators can identify latency bottlenecks.
+ *
  * The TotalAgility "sync" job endpoint (`/jobs/sync`) is used so that the
  * process runs in-memory on the server for lower latency.
  *
@@ -40,6 +53,135 @@
 
 const config = require("./config");
 const { TeamsInfo } = require("botbuilder");
+const { Pool } = require("undici");
+
+// ── Timeout Defaults ──────────────────────────────────────────────────────────
+
+/** Default timeout for SSO login requests (15 s). */
+const DEFAULT_SSO_TIMEOUT_MS = 15_000;
+
+/** Default timeout for Agent `/jobs/sync` calls (5 min). */
+const DEFAULT_AGENT_TIMEOUT_MS = 300_000;
+
+/** Default timeout for Document Creator `/jobs/sync` calls (2 min). */
+const DEFAULT_DOCUMENT_TIMEOUT_MS = 120_000;
+
+/**
+ * Parse a timeout config value to an integer, returning the default if
+ * the value is missing or invalid.
+ *
+ * @param {string|undefined} raw      - The raw config string.
+ * @param {number}           fallback - Default timeout in ms.
+ * @returns {number} The parsed timeout in milliseconds.
+ * @private
+ */
+function _parseTimeout(raw, fallback) {
+  const n = parseInt(raw, 10);
+  return isNaN(n) || n <= 0 ? fallback : n;
+}
+
+// ── HTTP Connection Pool ──────────────────────────────────────────────────────
+
+/**
+ * Shared `undici.Pool` that keeps TCP/TLS connections alive to the
+ * TotalAgility origin.  All `fetch()` calls in this module pass
+ * `{ dispatcher: taPool }` so that the underlying socket is reused
+ * across requests — eliminating the TLS handshake overhead that would
+ * otherwise occur on every HTTP call.
+ *
+ * The pool is created lazily on first use (by `_getPool()`) because
+ * `config.totalAgilityEndpoint` may not yet be populated at module-load
+ * time (e.g. when env-cmd injects variables after require).
+ *
+ * @type {Pool|null}
+ * @private
+ */
+let taPool = null;
+
+/**
+ * Return (and lazily create) the shared undici connection pool for the
+ * TotalAgility origin.
+ *
+ * The pool is configured with:
+ * - `connections: 10`  — up to 10 concurrent keep-alive sockets.
+ * - `pipelining: 1`    — standard HTTP/1.1 pipelining (one request per
+ *   socket at a time).
+ * - `keepAliveTimeout` / `keepAliveMaxTimeout` — keep idle sockets open
+ *   for up to 60 s before closing them, allowing rapid reuse for the
+ *   next API call.
+ *
+ * @returns {Pool} The undici Pool instance.
+ * @private
+ */
+function _getPool() {
+  if (!taPool) {
+    const origin = config.totalAgilityEndpoint;
+    if (!origin) {
+      throw new Error(
+        "[taAgent] TOTALAGILITY_ENDPOINT is not configured — cannot create connection pool."
+      );
+    }
+    // Extract just the origin (scheme + host + port) from the full URL.
+    const url = new URL(origin);
+    const poolOrigin = url.origin;
+
+    taPool = new Pool(poolOrigin, {
+      connections: 10,
+      pipelining: 1,
+      keepAliveTimeout: 60_000,
+      keepAliveMaxTimeout: 60_000,
+    });
+    console.log(`[taAgent] Created undici Pool for origin: ${poolOrigin}`);
+  }
+  return taPool;
+}
+
+// ── Timed Fetch Helper ────────────────────────────────────────────────────────
+
+/**
+ * Execute a `fetch()` request with a timeout and the shared connection pool.
+ *
+ * Uses `AbortController` to enforce the timeout.  If the request exceeds
+ * `timeoutMs`, the fetch is aborted and an `Error` is thrown with a
+ * descriptive message.
+ *
+ * Also logs the elapsed time for every request to aid performance analysis.
+ *
+ * @param {string}        url       - The URL to fetch.
+ * @param {RequestInit}   options   - Standard fetch options (method, headers, body).
+ * @param {number}        timeoutMs - Maximum time to wait (milliseconds).
+ * @param {string}        label     - Human-readable label for log messages.
+ * @returns {Promise<Response>} The fetch Response.
+ * @throws {Error} If the request times out or the fetch fails.
+ * @private
+ */
+async function _timedFetch(url, options, timeoutMs, label) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const start = Date.now();
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      dispatcher: _getPool(),
+    });
+    const elapsed = Date.now() - start;
+    console.log(`[taAgent] ${label} completed in ${elapsed} ms (status ${response.status})`);
+    return response;
+  } catch (err) {
+    const elapsed = Date.now() - start;
+    if (err.name === "AbortError") {
+      throw new Error(
+        `[taAgent] ${label} timed out after ${timeoutMs} ms (elapsed: ${elapsed} ms). URL: ${url}`
+      );
+    }
+    console.error(`[taAgent] ${label} failed after ${elapsed} ms:`, err.message);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // ── Session Management ────────────────────────────────────────────────────────
 
@@ -77,6 +219,19 @@ class InvalidSessionError extends Error {
 const sessionCache = new Map();
 
 /**
+ * In-flight SSO login promises, keyed by user identifier.
+ *
+ * When multiple concurrent requests trigger a session refresh for the same
+ * user, only one SSO HTTP call is made; subsequent callers await the same
+ * promise.  This prevents a thundering-herd of duplicate SSO logins and
+ * reduces latency for concurrent requests.
+ *
+ * @type {Map<string, Promise<string>>}
+ * @private
+ */
+const ssoInflight = new Map();
+
+/**
  * Resolve a consistent user identifier from the current bot turn context.
  *
  * - In test mode (`TOTALAGILITY_USE_TEST_USER=true`): returns the configured
@@ -103,6 +258,11 @@ async function _resolveUserId(context) {
  * otherwise requests a new session via {@link taSSOLogin} and stores it
  * in the cache.
  *
+ * **Deduplication (v1.9):** if an SSO login is already in flight for this
+ * user, the existing promise is returned instead of starting a second
+ * concurrent login.  This prevents a thundering-herd when multiple API
+ * calls fail with 403 simultaneously.
+ *
  * @param {import("botbuilder").TurnContext} context - The current bot turn context.
  * @param {boolean} [forceRefresh=false] - When `true`, bypasses the cache and
  *   always requests a new session from TotalAgility.
@@ -116,15 +276,34 @@ async function _getSession(context, forceRefresh = false) {
     throw new Error("Unable to resolve user identity for TotalAgility SSO.");
   }
 
+  // Return cached session if available and not forcing a refresh.
   if (!forceRefresh && sessionCache.has(userId)) {
     console.log(`[taAgent] Using cached session for user: ${userId}`);
     return sessionCache.get(userId);
   }
 
+  // Deduplicate: if an SSO login is already in flight for this user,
+  // return the existing promise instead of starting a second one.
+  if (ssoInflight.has(userId)) {
+    console.log(`[taAgent] Waiting for in-flight SSO login for user: ${userId}`);
+    return ssoInflight.get(userId);
+  }
+
   console.log(`[taAgent] Requesting new SSO session for user: ${userId}`);
-  const sessionKey = await taSSOLogin(context);
-  sessionCache.set(userId, sessionKey);
-  return sessionKey;
+
+  // Create the login promise and register it for deduplication.
+  const loginPromise = taSSOLogin(context)
+    .then((sessionKey) => {
+      sessionCache.set(userId, sessionKey);
+      return sessionKey;
+    })
+    .finally(() => {
+      // Always clean up the in-flight tracker, regardless of success/failure.
+      ssoInflight.delete(userId);
+    });
+
+  ssoInflight.set(userId, loginPromise);
+  return loginPromise;
 }
 
 /**
@@ -236,6 +415,10 @@ async function createTotalAgilityDocument(base64String, mimeType, sessionKey, fi
   if (!base64String) return "";
 
   const url = config.totalAgilityEndpoint + "/jobs/sync";
+  const timeoutMs = _parseTimeout(
+    config.totalAgilityDocumentTimeoutMs,
+    DEFAULT_DOCUMENT_TIMEOUT_MS
+  );
 
   const payload = {
     ProcessId: config.totalAgilityDocumentCreatorProcessId,
@@ -274,11 +457,12 @@ async function createTotalAgilityDocument(base64String, mimeType, sessionKey, fi
   };
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: headers,
-      body: JSON.stringify(payload),
-    });
+    const response = await _timedFetch(
+      url,
+      { method: "POST", headers, body: JSON.stringify(payload) },
+      timeoutMs,
+      `Document Creator (${fileName})`
+    );
 
     // Check for expired/invalid session (throws InvalidSessionError).
     await _checkForInvalidSession(response, url);
@@ -433,6 +617,10 @@ async function callRestService(prompt_text, sessionKey, documentInfo) {
 
   let return_response = "";
   const url = config.totalAgilityEndpoint + "/jobs/sync";
+  const timeoutMs = _parseTimeout(
+    config.totalAgilityAgentTimeoutMs,
+    DEFAULT_AGENT_TIMEOUT_MS
+  );
   console.log("Calling TotalAgility on " + url);
 
   // ── Build the job payload ─────────────────────────────────────────────
@@ -503,11 +691,12 @@ async function callRestService(prompt_text, sessionKey, documentInfo) {
 
   // ── Execute the request ───────────────────────────────────────────────
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: headers,
-      body: JSON.stringify(payload),
-    });
+    const response = await _timedFetch(
+      url,
+      { method: "POST", headers, body: JSON.stringify(payload) },
+      timeoutMs,
+      "Agent /jobs/sync"
+    );
 
     // Check for expired/invalid session (throws InvalidSessionError).
     await _checkForInvalidSession(response, url);
@@ -655,6 +844,10 @@ async function taSSOLogin(context) {
   try {
     const ssoUrl =
       config.totalAgilityEndpoint + "/users/sessions/single-sign-on";
+    const timeoutMs = _parseTimeout(
+      config.totalAgilitySsoTimeoutMs,
+      DEFAULT_SSO_TIMEOUT_MS
+    );
 
     const ssoPayload = { UserId: "" };
 
@@ -670,11 +863,12 @@ async function taSSOLogin(context) {
       Authorization: config.totalAgilityApiKey,
     };
 
-    const ssoResponse = await fetch(ssoUrl, {
-      method: "POST",
-      headers: ssoHeaders,
-      body: JSON.stringify(ssoPayload),
-    });
+    const ssoResponse = await _timedFetch(
+      ssoUrl,
+      { method: "POST", headers: ssoHeaders, body: JSON.stringify(ssoPayload) },
+      timeoutMs,
+      "SSO login"
+    );
 
     if (!ssoResponse.ok) {
       throw new Error(

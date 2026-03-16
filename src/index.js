@@ -191,6 +191,14 @@ const server = expressApp.listen(
   }
 );
 
+// ── Server Keep-Alive Tuning (v1.9) ──────────────────────────────────────────
+// Azure App Service's front-end load balancer closes idle connections after
+// 240 s.  Setting `keepAliveTimeout` slightly above that value (and
+// `headersTimeout` a bit higher still) prevents the server from closing
+// the socket first — which would cause 502 errors on Azure.
+server.keepAliveTimeout = 250_000;  // 250 s (Azure LB idle = 240 s)
+server.headersTimeout = 255_000;    // Must be > keepAliveTimeout
+
 // ── POST /api/messages ────────────────────────────────────────────────────────
 /**
  * Main Bot Framework messaging endpoint.

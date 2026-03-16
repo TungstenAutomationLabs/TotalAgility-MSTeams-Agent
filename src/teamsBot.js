@@ -30,7 +30,6 @@ const TotalAgilityAgent = require("./taAgent.js");
 const config = require("./config");
 const Utils = require("./utils.js");
 const conversationStore = require("./conversationStore.js");
-const axios = require("axios");
 
 // ── Module-Level State ────────────────────────────────────────────────────────
 
@@ -62,6 +61,11 @@ const emailCache = new Map();
 /**
  * Millisecond intervals at which periodic "still working" messages are sent
  * while awaiting a TotalAgility Agent response.
+ *
+ * These are **absolute** offsets from when the Agent call starts (not
+ * deltas between messages).  The progress scheduler converts them into
+ * relative delays internally.
+ *
  * @type {number[]}
  */
 const PROGRESS_INTERVALS = [
@@ -69,6 +73,60 @@ const PROGRESS_INTERVALS = [
   110000, 120000, 130000, 140000, 150000, 160000, 170000, 180000, 190000,
   200000,
 ];
+
+/**
+ * Start a single-timer progress scheduler that sends periodic "still
+ * working" messages at the offsets defined in `PROGRESS_INTERVALS`.
+ *
+ * Unlike the previous approach (which created one `setTimeout` per
+ * interval — up to 20 timers), this scheduler chains a single timer
+ * that fires at each interval in turn, reducing event-loop overhead.
+ *
+ * @param {import("botbuilder").TurnContext} context - The current turn context.
+ * @returns {{ stop: () => void }} An object with a `stop()` method to cancel the scheduler.
+ */
+function startProgressScheduler(context) {
+  let currentIndex = 0;
+  let timerId = null;
+  let stopped = false;
+
+  /**
+   * Schedule the next progress message.  The delay is the delta between
+   * the current interval offset and the previous one (or 0 for the first).
+   */
+  function scheduleNext() {
+    if (stopped || currentIndex >= PROGRESS_INTERVALS.length) return;
+
+    const absoluteMs = PROGRESS_INTERVALS[currentIndex];
+    const previousMs = currentIndex > 0 ? PROGRESS_INTERVALS[currentIndex - 1] : 0;
+    const deltaMs = absoluteMs - previousMs;
+
+    timerId = setTimeout(async () => {
+      if (stopped) return;
+      try {
+        await context.sendActivity(Utils.getRandomProgressMessage());
+        await context.sendActivities([{ type: "typing" }]);
+      } catch (_) {
+        // Sending may fail if the conversation is no longer active.
+      }
+      currentIndex++;
+      scheduleNext();
+    }, deltaMs);
+  }
+
+  scheduleNext();
+
+  return {
+    /** Cancel any pending progress message. */
+    stop() {
+      stopped = true;
+      if (timerId !== null) {
+        clearTimeout(timerId);
+        timerId = null;
+      }
+    },
+  };
+}
 
 /**
  * Lookup table mapping file extensions to MIME types.
@@ -345,10 +403,16 @@ class TeamsBot extends TeamsActivityHandler {
             await context.sendActivities([{ type: "typing" }]);
 
             // Download and convert to base64 for the TotalAgility API.
-            const response = await axios.get(downloadUrl, {
-              responseType: "arraybuffer",
-            });
-            let base64String = Buffer.from(response.data).toString("base64");
+            // Uses native fetch instead of axios — one fewer dependency and
+            // consistent with all other HTTP calls in the codebase.
+            const dlResponse = await fetch(downloadUrl);
+            if (!dlResponse.ok) {
+              throw new Error(
+                `File download failed: HTTP ${dlResponse.status} for ${fileName}`
+              );
+            }
+            const arrayBuffer = await dlResponse.arrayBuffer();
+            let base64String = Buffer.from(arrayBuffer).toString("base64");
 
             await context.sendActivity(`File ${fileName} received.`);
             await context.sendActivities([{ type: "typing" }]);
@@ -394,18 +458,10 @@ class TeamsBot extends TeamsActivityHandler {
         }
       }
 
-      // ── Progress timers ─────────────────────────────────────────────
-      let timers = [];
-      let isDone = false;
-
-      PROGRESS_INTERVALS.forEach((delay, idx) => {
-        timers[idx] = setTimeout(async () => {
-          if (!isDone) {
-            await context.sendActivity(Utils.getRandomProgressMessage());
-            await context.sendActivities([{ type: "typing" }]);
-          }
-        }, delay);
-      });
+      // ── Progress scheduler ───────────────────────────────────────────
+      // Uses a single chained timer instead of N separate setTimeout
+      // calls — reduces event-loop overhead.
+      const progress = startProgressScheduler(context);
 
       // ── Call the TotalAgility Agent ─────────────────────────────────
       // Uses callRestServiceWithAuth which handles SSO session
@@ -421,8 +477,7 @@ class TeamsBot extends TeamsActivityHandler {
       await context.sendActivity(agentResponse);
 
       // ── Cleanup ─────────────────────────────────────────────────────
-      isDone = true;
-      timers.forEach((timer) => clearTimeout(timer));
+      progress.stop();
       saveMsg("TotalAgility Agent", agentResponse);
     } catch (error) {
       await context.sendActivity(

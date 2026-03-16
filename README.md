@@ -521,6 +521,19 @@ TOTALAGILITY_USE_TEST_USER=true
 - **New auth-aware entry points:** Added `callRestServiceWithAuth()` and `createTotalAgilityDocumentWithAuth()` in `taAgent.js` which manage the full session lifecycle (obtain → use → detect expiry → refresh → retry). These are now the primary functions called by `teamsBot.js`.
 - **Simplified `teamsBot.js`:** Removed the per-request `taSSOLogin()` call and the module-level `ssoKey` variable from `teamsBot.js`. The `handleMessageWithLoadingIndicator()` method no longer takes an `ssoKey` parameter — session management is fully encapsulated in `taAgent.js`.
 
+### Version 1.9
+- **HTTP connection pooling:** All outbound HTTP calls to TotalAgility now use a shared `undici.Pool`, keeping TCP/TLS connections alive across requests. This eliminates the TLS handshake overhead that previously occurred on every API call, significantly reducing latency — especially on Azure App Service where TLS negotiation can add 50–150 ms per request.
+- **Request timeouts:** All TotalAgility HTTP calls (SSO login, Agent `/jobs/sync`, Document Creator) now use `AbortController`-based timeouts. Configurable via environment variables:
+  - `TOTALAGILITY_SSO_TIMEOUT_MS` — SSO login timeout (default: 15 s)
+  - `TOTALAGILITY_AGENT_TIMEOUT_MS` — Agent call timeout (default: 5 min)
+  - `TOTALAGILITY_DOCUMENT_TIMEOUT_MS` — Document Creator timeout (default: 2 min)
+- **SSO login deduplication:** When multiple concurrent requests trigger a session refresh for the same user, only one SSO HTTP call is made; subsequent callers await the same promise. This prevents a thundering-herd of duplicate SSO logins.
+- **Timing instrumentation:** Every HTTP call to TotalAgility now logs its elapsed time and HTTP status, making it easy to identify latency bottlenecks in production.
+- **Replaced `axios` with native `fetch`:** File attachment downloads in `teamsBot.js` now use the built-in `fetch()` API instead of the `axios` library — removing one runtime dependency.
+- **Server keep-alive tuning:** `server.keepAliveTimeout` and `server.headersTimeout` in `index.js` are now set to 250 s / 255 s respectively, slightly above Azure App Service's 240 s load-balancer idle timeout. This prevents premature socket closure that could cause 502 errors on Azure.
+- **Single-timer progress scheduler:** Replaced the 20 separate `setTimeout` calls for "still working" messages with a single chained timer (`startProgressScheduler()`) that fires at each interval in turn — reducing event-loop overhead during long-running Agent calls.
+- **Removed `axios` dependency:** The `axios` package has been removed from `package.json` since all HTTP calls now use `fetch` (backed by `undici`).
+
 ---
 
 ## Microsoft 365 Agents Toolkit — Resources
