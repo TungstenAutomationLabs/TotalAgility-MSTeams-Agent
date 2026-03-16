@@ -239,6 +239,13 @@ class TeamsBot extends TeamsActivityHandler {
           );
           messageArray = [];
           await context.sendActivity("Conversation history reset.");
+        } else if (
+          messageText.match(/^clear teams chat window$/)
+        ) {
+          // Send 50 lines of blank text to visually clear the Teams chat window.
+          // Nothing is sent to TotalAgility — this is purely cosmetic.
+          const blankLines = Array(50).fill(" ").join("\n");
+          await context.sendActivity(blankLines);
         } else {
           // Send an initial loading message and typing indicator.
           await context.sendActivity(Utils.getRandomLoadingMessage());

@@ -53,6 +53,10 @@
                         {
                             "title": "Work Item Details",
                             "description": "Give me the details of job: 58710728C9EF11EFA8502818785AA6F9"
+                        },
+                        {
+                            "title": "Clear Teams Chat Window",
+                            "description": "Sends blank lines to visually clear the Teams chat window."
                         }
                     ]
                 }
